@@ -54,15 +54,15 @@ typedef struct _cmsParametricCurvesCollection_st {
 
 } _cmsParametricCurvesCollection;
 
-// This is the default (built-in) evaluator
-static cmsFloat64Number DefaultEvalParametricFn(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R);
+// Select the built-in evaluator when allocating a curve segment.
+static cmsParametricCurveEvaluator GetDefaultParametricEvaluator(cmsInt32Number Type);
 
 // The built-in list
 static _cmsParametricCurvesCollection DefaultCurves = {
     10,                                      // # of curve types
     { 1, 2, 3, 4, 5, 6, 7, 8, 108, 109 },    // Parametric curve ID
     { 1, 3, 4, 5, 7, 4, 5, 5,   1,   1 },    // Parameters by type
-    DefaultEvalParametricFn,                 // Evaluator
+    NULL,                                    // Built-in evaluators are selected by type
     NULL                                     // Next in chain
 };
 
@@ -291,7 +291,9 @@ cmsToneCurve* AllocateToneCurveStruct(cmsContext ContextID, cmsUInt32Number nEnt
 
             c = GetParametricCurveByType(ContextID, Segments[i].Type, NULL);
             if (c != NULL)
-                    p ->Evals[i] = c ->Evaluator;
+                p ->Evals[i] = (c == &DefaultCurves)
+                    ? GetDefaultParametricEvaluator(Segments[i].Type)
+                    : c ->Evaluator;
         }
     }
 
@@ -339,164 +341,75 @@ cmsINLINE double inverse_sigmoid_factory(double k, double t)
 }
 
 
-// Parametric Fn using floating point
+// Built-in evaluators. The curve type is selected once when each segment is allocated.
+// X = Y ^ Gamma
 static
-cmsFloat64Number DefaultEvalParametricFn(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+cmsFloat64Number EvalParametric1(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number Val;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    if (R < 0) {
+
+        if (fabs(Params[0] - 1.0) < MATRIX_DET_TOLERANCE)
+            Val = R;
+        else
+            Val = 0;
+    }
+    else
+        Val = pow(R, Params[0]);
+
+    return Val;
+}
+
+// Type 1 Reversed: X = Y ^1/gamma
+static
+cmsFloat64Number EvalParametric1Inverse(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number Val;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    if (R < 0) {
+
+        if (fabs(Params[0] - 1.0) < MATRIX_DET_TOLERANCE)
+            Val = R;
+        else
+            Val = 0;
+    }
+    else
+    {
+        if (fabs(Params[0]) < MATRIX_DET_TOLERANCE)
+            Val = PLUS_INF;
+        else
+            Val = pow(R, 1 / Params[0]);
+    }
+
+    return Val;
+}
+
+// CIE 122-1966
+// Y = (aX + b)^Gamma  | X >= -b/a
+// Y = 0               | else
+static
+cmsFloat64Number EvalParametric2(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
 {
     cmsFloat64Number e, Val, disc;
 
-    switch (Type) {
+    cmsUNUSED_PARAMETER(Type);
 
-   // X = Y ^ Gamma
-    case 1:
-        if (R < 0) {
-
-            if (fabs(Params[0] - 1.0) < MATRIX_DET_TOLERANCE)
-                Val = R;
-            else
-                Val = 0;
-        }
-        else
-            Val = pow(R, Params[0]);
-        break;
-
-    // Type 1 Reversed: X = Y ^1/gamma
-    case -1:
-        if (R < 0) {
-
-            if (fabs(Params[0] - 1.0) < MATRIX_DET_TOLERANCE)
-                Val = R;
-            else
-                Val = 0;
-        }
-        else
-        {
-            if (fabs(Params[0]) < MATRIX_DET_TOLERANCE)
-                Val = PLUS_INF;
-            else
-                Val = pow(R, 1 / Params[0]);
-        }
-        break;
-
-    // CIE 122-1966
-    // Y = (aX + b)^Gamma  | X >= -b/a
-    // Y = 0               | else
-    case 2:
+    if (fabs(Params[1]) < MATRIX_DET_TOLERANCE)
     {
-
-        if (fabs(Params[1]) < MATRIX_DET_TOLERANCE)
-        {
-            Val = 0;
-        }
-        else
-        {
-            disc = -Params[2] / Params[1];
-
-            if (R >= disc) {
-
-                e = Params[1] * R + Params[2];
-
-                if (e > 0)
-                    Val = pow(e, Params[0]);
-                else
-                    Val = 0;
-            }
-            else
-                Val = 0;
-        }
+        Val = 0;
     }
-    break;
-
-     // Type 2 Reversed
-     // X = (Y ^1/g  - b) / a
-     case -2:
-     {
-         if (fabs(Params[0]) < MATRIX_DET_TOLERANCE ||
-             fabs(Params[1]) < MATRIX_DET_TOLERANCE)
-         {
-             Val = 0;
-         }
-         else
-         {
-             if (R < 0)
-                 Val = 0;
-             else
-                 Val = (pow(R, 1.0 / Params[0]) - Params[2]) / Params[1];
-
-             if (Val < 0)
-                 Val = 0;
-         }
-     }         
-     break;
-
-
-    // IEC 61966-3
-    // Y = (aX + b)^Gamma + c | X <= -b/a
-    // Y = c                  | else
-    case 3:
+    else
     {
-        if (fabs(Params[1]) < MATRIX_DET_TOLERANCE)
-        {
-            Val = 0;
-        }
-        else
-        {
-            disc = -Params[2] / Params[1];
-            if (disc < 0)
-                disc = 0;
+        disc = -Params[2] / Params[1];
 
-            if (R >= disc) {
+        if (R >= disc) {
 
-                e = Params[1] * R + Params[2];
-
-                if (e > 0)
-                    Val = pow(e, Params[0]) + Params[3];
-                else
-                    Val = 0;
-            }
-            else
-                Val = Params[3];
-        }
-    }
-    break;
-
-
-    // Type 3 reversed
-    // X=((Y-c)^1/g - b)/a      | (Y>=c)
-    // X=-b/a                   | (Y<c)
-    case -3:
-    {
-        if (fabs(Params[0]) < MATRIX_DET_TOLERANCE ||
-            fabs(Params[1]) < MATRIX_DET_TOLERANCE)
-        {
-            Val = 0;
-        }
-        else
-        {
-            if (R >= Params[3]) {
-
-                e = R - Params[3];
-
-                if (e > 0)
-                    Val = (pow(e, 1 / Params[0]) - Params[2]) / Params[1];
-                else
-                    Val = 0;
-            }
-            else {
-                Val = -Params[2] / Params[1];
-            }
-        }
-    }
-    break;
-
-
-    // IEC 61966-2.1 (sRGB)
-    // Y = (aX + b)^Gamma | X >= d
-    // Y = cX             | X < d
-    case 4:
-        if (R >= Params[4]) {
-
-            e = Params[1]*R + Params[2];
+            e = Params[1] * R + Params[2];
 
             if (e > 0)
                 Val = pow(e, Params[0]);
@@ -504,219 +417,450 @@ cmsFloat64Number DefaultEvalParametricFn(cmsInt32Number Type, const cmsFloat64Nu
                 Val = 0;
         }
         else
-            Val = R * Params[3];
-        break;
+            Val = 0;
+    }
 
-    // Type 4 reversed
-    // X=((Y^1/g-b)/a)    | Y >= (ad+b)^g
-    // X=Y/c              | Y< (ad+b)^g
-    case -4:
+    return Val;
+}
+
+// Type 2 Reversed
+// X = (Y ^1/g  - b) / a
+static
+cmsFloat64Number EvalParametric2Inverse(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number Val;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    if (fabs(Params[0]) < MATRIX_DET_TOLERANCE ||
+        fabs(Params[1]) < MATRIX_DET_TOLERANCE)
     {
-
-        e = Params[1] * Params[4] + Params[2];
-        if (e < 0)
-            disc = 0;
+        Val = 0;
+    }
+    else
+    {
+        if (R < 0)
+            Val = 0;
         else
-            disc = pow(e, Params[0]);
+            Val = (pow(R, 1.0 / Params[0]) - Params[2]) / Params[1];
+
+        if (Val < 0)
+            Val = 0;
+    }
+
+    return Val;
+}
+
+// IEC 61966-3
+// Y = (aX + b)^Gamma + c | X <= -b/a
+// Y = c                  | else
+static
+cmsFloat64Number EvalParametric3(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number e, Val, disc;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    if (fabs(Params[1]) < MATRIX_DET_TOLERANCE)
+    {
+        Val = 0;
+    }
+    else
+    {
+        disc = -Params[2] / Params[1];
+        if (disc < 0)
+            disc = 0;
 
         if (R >= disc) {
 
+            e = Params[1] * R + Params[2];
+
+            if (e > 0)
+                Val = pow(e, Params[0]) + Params[3];
+            else
+                Val = 0;
+        }
+        else
+            Val = Params[3];
+    }
+
+    return Val;
+}
+
+// Type 3 reversed
+// X=((Y-c)^1/g - b)/a      | (Y>=c)
+// X=-b/a                   | (Y<c)
+static
+cmsFloat64Number EvalParametric3Inverse(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number e, Val;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    if (fabs(Params[0]) < MATRIX_DET_TOLERANCE ||
+        fabs(Params[1]) < MATRIX_DET_TOLERANCE)
+    {
+        Val = 0;
+    }
+    else
+    {
+        if (R >= Params[3]) {
+
+            e = R - Params[3];
+
+            if (e > 0)
+                Val = (pow(e, 1 / Params[0]) - Params[2]) / Params[1];
+            else
+                Val = 0;
+        }
+        else {
+            Val = -Params[2] / Params[1];
+        }
+    }
+
+    return Val;
+}
+
+// IEC 61966-2.1 (sRGB)
+// Y = (aX + b)^Gamma | X >= d
+// Y = cX             | X < d
+static
+cmsFloat64Number EvalParametric4(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number e, Val;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    if (R >= Params[4]) {
+
+        e = Params[1]*R + Params[2];
+
+        if (e > 0)
+            Val = pow(e, Params[0]);
+        else
+            Val = 0;
+    }
+    else
+        Val = R * Params[3];
+
+    return Val;
+}
+
+// Type 4 reversed
+// X=((Y^1/g-b)/a)    | Y >= (ad+b)^g
+// X=Y/c              | Y< (ad+b)^g
+static
+cmsFloat64Number EvalParametric4Inverse(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number e, Val, disc;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    e = Params[1] * Params[4] + Params[2];
+    if (e < 0)
+        disc = 0;
+    else
+        disc = pow(e, Params[0]);
+
+    if (R >= disc) {
+
+        if (fabs(Params[0]) < MATRIX_DET_TOLERANCE ||
+            fabs(Params[1]) < MATRIX_DET_TOLERANCE)
+
+            Val = 0;
+
+        else
+            Val = (pow(R, 1.0 / Params[0]) - Params[2]) / Params[1];
+    }
+    else {
+
+        if (fabs(Params[3]) < MATRIX_DET_TOLERANCE)
+            Val = 0;
+        else
+            Val = R / Params[3];
+    }
+
+    return Val;
+}
+
+// Y = (aX + b)^Gamma + e | X >= d
+// Y = cX + f             | X < d
+static
+cmsFloat64Number EvalParametric5(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number e, Val;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    if (R >= Params[4]) {
+
+        e = Params[1]*R + Params[2];
+
+        if (e > 0)
+            Val = pow(e, Params[0]) + Params[5];
+        else
+            Val = Params[5];
+    }
+    else
+        Val = R*Params[3] + Params[6];
+
+    return Val;
+}
+
+// Reversed type 5
+// X=((Y-e)1/g-b)/a   | Y >=(ad+b)^g+e), cd+f
+// X=(Y-f)/c          | else
+static
+cmsFloat64Number EvalParametric5Inverse(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number e, Val, disc;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    disc = Params[3] * Params[4] + Params[6];
+    if (R >= disc) {
+
+        e = R - Params[5];
+        if (e < 0)
+            Val = 0;
+        else
+        {
             if (fabs(Params[0]) < MATRIX_DET_TOLERANCE ||
                 fabs(Params[1]) < MATRIX_DET_TOLERANCE)
 
-                Val = 0;
-
-            else
-                Val = (pow(R, 1.0 / Params[0]) - Params[2]) / Params[1];
-        }
-        else {
-
-            if (fabs(Params[3]) < MATRIX_DET_TOLERANCE)
-                Val = 0;
-            else
-                Val = R / Params[3];
-        }
-
-    }
-    break;
-
-
-    // Y = (aX + b)^Gamma + e | X >= d
-    // Y = cX + f             | X < d
-    case 5:
-        if (R >= Params[4]) {
-
-            e = Params[1]*R + Params[2];
-
-            if (e > 0)
-                Val = pow(e, Params[0]) + Params[5];
-            else
-                Val = Params[5];
-        }
-        else
-            Val = R*Params[3] + Params[6];
-        break;
-
-
-    // Reversed type 5
-    // X=((Y-e)1/g-b)/a   | Y >=(ad+b)^g+e), cd+f
-    // X=(Y-f)/c          | else
-    case -5:
-    {
-        disc = Params[3] * Params[4] + Params[6];
-        if (R >= disc) {
-
-            e = R - Params[5];
-            if (e < 0)
-                Val = 0;
-            else
-            {
-                if (fabs(Params[0]) < MATRIX_DET_TOLERANCE ||
-                    fabs(Params[1]) < MATRIX_DET_TOLERANCE)
-
-                    Val = 0;
-                else
-                    Val = (pow(e, 1.0 / Params[0]) - Params[2]) / Params[1];
-            }
-        }
-        else {
-            if (fabs(Params[3]) < MATRIX_DET_TOLERANCE)
-                Val = 0;
-            else
-                Val = (R - Params[6]) / Params[3];
-        }
-
-    }
-    break;
-
-
-    // Types 6,7,8 comes from segmented curves as described in ICCSpecRevision_02_11_06_Float.pdf
-    // Type 6 is basically identical to type 5 without d
-
-    // Y = (a * X + b) ^ Gamma + c
-    case 6:
-        e = Params[1]*R + Params[2];
-
-        // On gamma 1.0, don't clamp
-        if (Params[0] == 1.0) {
-            Val = e + Params[3];
-        }
-        else {
-            if (e < 0)
-                Val = Params[3];
-            else
-                Val = pow(e, Params[0]) + Params[3];
-        }
-        break;
-
-    // ((Y - c) ^1/Gamma - b) / a
-    case -6:
-    {
-        if (fabs(Params[0]) < MATRIX_DET_TOLERANCE ||
-            fabs(Params[1]) < MATRIX_DET_TOLERANCE)
-        {
-            Val = 0;
-        }
-        else
-        {
-            e = R - Params[3];
-            if (e < 0)
                 Val = 0;
             else
                 Val = (pow(e, 1.0 / Params[0]) - Params[2]) / Params[1];
         }
     }
-    break;
+    else {
+        if (fabs(Params[3]) < MATRIX_DET_TOLERANCE)
+            Val = 0;
+        else
+            Val = (R - Params[6]) / Params[3];
+    }
 
+    return Val;
+}
 
-    // Y = a * log (b * X^Gamma + c) + d
-    case 7:
+// Types 6,7,8 comes from segmented curves as described in ICCSpecRevision_02_11_06_Float.pdf
+// Type 6 is basically identical to type 5 without d
 
-       e = Params[2] * pow(R, Params[0]) + Params[3];
-       if (e <= 0)
-           Val = Params[4];
-       else
-           Val = Params[1]*log10(e) + Params[4];
-       break;
+// Y = (a * X + b) ^ Gamma + c
+static
+cmsFloat64Number EvalParametric6(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number e, Val;
 
-    // (Y - d) / a = log(b * X ^Gamma + c)
-    // pow(10, (Y-d) / a) = b * X ^Gamma + c
-    // pow((pow(10, (Y-d) / a) - c) / b, 1/g) = X
-    case -7:
+    cmsUNUSED_PARAMETER(Type);
+
+    e = Params[1]*R + Params[2];
+
+    // On gamma 1.0, don't clamp
+    if (Params[0] == 1.0) {
+        Val = e + Params[3];
+    }
+    else {
+        if (e < 0)
+            Val = Params[3];
+        else
+            Val = pow(e, Params[0]) + Params[3];
+    }
+
+    return Val;
+}
+
+// ((Y - c) ^1/Gamma - b) / a
+static
+cmsFloat64Number EvalParametric6Inverse(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number e, Val;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    if (fabs(Params[0]) < MATRIX_DET_TOLERANCE ||
+        fabs(Params[1]) < MATRIX_DET_TOLERANCE)
+    {
+        Val = 0;
+    }
+    else
+    {
+        e = R - Params[3];
+        if (e < 0)
+            Val = 0;
+        else
+            Val = (pow(e, 1.0 / Params[0]) - Params[2]) / Params[1];
+    }
+
+    return Val;
+}
+
+// Y = a * log (b * X^Gamma + c) + d
+static
+cmsFloat64Number EvalParametric7(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number e, Val;
+
+    cmsUNUSED_PARAMETER(Type);
+
+     e = Params[2] * pow(R, Params[0]) + Params[3];
+    if (e <= 0)
+        Val = Params[4];
+    else
+        Val = Params[1]*log10(e) + Params[4];
+
+    return Val;
+}
+
+// (Y - d) / a = log(b * X ^Gamma + c)
+// pow(10, (Y-d) / a) = b * X ^Gamma + c
+// pow((pow(10, (Y-d) / a) - c) / b, 1/g) = X
+static
+cmsFloat64Number EvalParametric7Inverse(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number Val;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    if (fabs(Params[0]) < MATRIX_DET_TOLERANCE ||
+        fabs(Params[1]) < MATRIX_DET_TOLERANCE ||
+        fabs(Params[2]) < MATRIX_DET_TOLERANCE)
+    {
+        Val = 0;
+    }
+    else
+    {
+        Val = pow((pow(10.0, (R - Params[4]) / Params[1]) - Params[3]) / Params[2], 1.0 / Params[0]);
+    }
+
+    return Val;
+}
+
+//Y = a * b^(c*X+d) + e
+static
+cmsFloat64Number EvalParametric8(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number Val;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    Val = (Params[0] * pow(Params[1], Params[2] * R + Params[3]) + Params[4]);
+
+    return Val;
+}
+
+// Y = (log((y-e) / a) / log(b) - d ) / c
+// a=0, b=1, c=2, d=3, e=4,
+static
+cmsFloat64Number EvalParametric8Inverse(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number Val, disc;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    disc = R - Params[4];
+    if (disc < 0) Val = 0;
+    else
     {
         if (fabs(Params[0]) < MATRIX_DET_TOLERANCE ||
-            fabs(Params[1]) < MATRIX_DET_TOLERANCE ||
             fabs(Params[2]) < MATRIX_DET_TOLERANCE)
         {
             Val = 0;
         }
         else
         {
-            Val = pow((pow(10.0, (R - Params[4]) / Params[1]) - Params[3]) / Params[2], 1.0 / Params[0]);
+            Val = (log(disc / Params[0]) / log(Params[1]) - Params[3]) / Params[2];
         }
-    }
-    break;
-
-
-   //Y = a * b^(c*X+d) + e
-   case 8:
-       Val = (Params[0] * pow(Params[1], Params[2] * R + Params[3]) + Params[4]);
-       break;
-
-
-   // Y = (log((y-e) / a) / log(b) - d ) / c
-   // a=0, b=1, c=2, d=3, e=4,
-   case -8:
-
-       disc = R - Params[4];
-       if (disc < 0) Val = 0;
-       else
-       {
-           if (fabs(Params[0]) < MATRIX_DET_TOLERANCE ||
-               fabs(Params[2]) < MATRIX_DET_TOLERANCE)
-           {
-               Val = 0;
-           }
-           else
-           {
-               Val = (log(disc / Params[0]) / log(Params[1]) - Params[3]) / Params[2];
-           }
-       }
-       break;
-
-
-   // S-Shaped: (1 - (1-x)^1/g)^1/g
-   case 108:
-       if (fabs(Params[0]) < MATRIX_DET_TOLERANCE)
-           Val = 0;
-       else
-           Val = pow(1.0 - pow(1 - R, 1/Params[0]), 1/Params[0]);
-      break;
-
-    // y = (1 - (1-x)^1/g)^1/g
-    // y^g = (1 - (1-x)^1/g)
-    // 1 - y^g = (1-x)^1/g
-    // (1 - y^g)^g = 1 - x
-    // 1 - (1 - y^g)^g
-    case -108:
-        Val = 1 - pow(1 - pow(R, Params[0]), Params[0]);
-        break;
-
-    // Sigmoidals
-    case 109:
-        Val = sigmoid_factory(Params[0], R);
-        break;
-
-    case -109:
-        Val = inverse_sigmoid_factory(Params[0], R);
-        break;
-
-    default:
-        // Unsupported parametric curve. Should never reach here
-        return 0;
     }
 
     return Val;
+}
+
+// S-Shaped: (1 - (1-x)^1/g)^1/g
+static
+cmsFloat64Number EvalParametric108(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number Val;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    if (fabs(Params[0]) < MATRIX_DET_TOLERANCE)
+        Val = 0;
+    else
+        Val = pow(1.0 - pow(1 - R, 1/Params[0]), 1/Params[0]);
+
+    return Val;
+}
+
+// y = (1 - (1-x)^1/g)^1/g
+// y^g = (1 - (1-x)^1/g)
+// 1 - y^g = (1-x)^1/g
+// (1 - y^g)^g = 1 - x
+// 1 - (1 - y^g)^g
+static
+cmsFloat64Number EvalParametric108Inverse(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number Val;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    Val = 1 - pow(1 - pow(R, Params[0]), Params[0]);
+
+    return Val;
+}
+
+// Sigmoidals
+static
+cmsFloat64Number EvalParametric109(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number Val;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    Val = sigmoid_factory(Params[0], R);
+
+    return Val;
+}
+
+static
+cmsFloat64Number EvalParametric109Inverse(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number Val;
+
+    cmsUNUSED_PARAMETER(Type);
+
+    Val = inverse_sigmoid_factory(Params[0], R);
+
+    return Val;
+}
+
+// Plugins keep their own evaluator; only the built-in collection uses this selector.
+static
+cmsParametricCurveEvaluator GetDefaultParametricEvaluator(cmsInt32Number Type)
+{
+    switch (Type) {
+    case 1: return EvalParametric1;
+    case -1: return EvalParametric1Inverse;
+    case 2: return EvalParametric2;
+    case -2: return EvalParametric2Inverse;
+    case 3: return EvalParametric3;
+    case -3: return EvalParametric3Inverse;
+    case 4: return EvalParametric4;
+    case -4: return EvalParametric4Inverse;
+    case 5: return EvalParametric5;
+    case -5: return EvalParametric5Inverse;
+    case 6: return EvalParametric6;
+    case -6: return EvalParametric6Inverse;
+    case 7: return EvalParametric7;
+    case -7: return EvalParametric7Inverse;
+    case 8: return EvalParametric8;
+    case -8: return EvalParametric8Inverse;
+    case 108: return EvalParametric108;
+    case -108: return EvalParametric108Inverse;
+    case 109: return EvalParametric109;
+    case -109: return EvalParametric109Inverse;
+    default: return NULL;
+    }
 }
 
 // Evaluate a segmented function for a single value. Return -Inf if no valid segment found .
