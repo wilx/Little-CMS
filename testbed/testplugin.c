@@ -545,6 +545,77 @@ cmsPluginParametricCurves CurvePluginSample2 = {
     my_fns2                  // Evaluator
 };
 
+// A plugin may replace a built-in type, including its inverse. Selecting a
+// built-in evaluator by the numeric type alone would bypass this override.
+// Provide a deliberately distinct type-5 plugin formula to expose accidental built-in dispatch.
+static
+cmsFloat64Number OverrideBuiltinCurve(cmsInt32Number Type,
+                                     const cmsFloat64Number Params[],
+                                     cmsFloat64Number R)
+{
+    switch (Type) {
+    case 5:  return R * Params[0];
+    case -5: return R / Params[0];
+    default: return 0;
+    }
+}
+
+// Verify that plugin overrides survive inversion, duplication and mixed segmented curves.
+static
+cmsInt32Number CheckParametricCurveOverride(void)
+{
+    cmsPluginParametricCurves Plugin = {
+        { cmsPluginMagicNumber, 2060, cmsPluginParametricCurveSig, NULL },
+        1, { 5 }, { 1 }, OverrideBuiltinCurve
+    };
+    cmsContext ctx = NULL, copy = NULL;
+    cmsToneCurve* curves[5] = { NULL, NULL, NULL, NULL, NULL };
+    cmsCurveSegment segments[2];
+    cmsFloat64Number scale = 0.5;
+    cmsInt32Number i, ok = 0;
+
+    ctx = WatchDogContext(NULL);
+    if (ctx == NULL || !cmsPluginTHR(ctx, &Plugin)) goto Done;
+    copy = DupContext(ctx, NULL);
+    if (copy == NULL) goto Done;
+
+    curves[0] = cmsBuildParametricToneCurve(copy, 5, &scale);
+    if (curves[0] == NULL) goto Done;
+    curves[1] = cmsReverseToneCurve(curves[0]);
+    curves[2] = cmsDupToneCurve(curves[0]);
+    curves[3] = cmsBuildGamma(copy, 2.0);
+
+    memset(segments, 0, sizeof(segments));
+    segments[0].x0 = -1E22F;
+    segments[0].x1 = 0.5F;
+    segments[0].Type = 5;
+    segments[0].Params[0] = scale;
+    segments[1].x0 = 0.5F;
+    segments[1].x1 = 1E22F;
+    segments[1].Type = 6;
+    segments[1].Params[0] = 1.0;
+    segments[1].Params[1] = scale;
+    curves[4] = cmsBuildSegmentedToneCurve(copy, 2, segments);
+
+    for (i = 0; i < 5; i++)
+        if (curves[i] == NULL) goto Done;
+
+    if (!IsGoodVal("Built-in type overridden", cmsEvalToneCurveFloat(curves[0], 0.5F), 0.25, 0)) goto Done;
+    if (!IsGoodVal("Inverse type overridden", cmsEvalToneCurveFloat(curves[1], 0.25F), 0.5, 0)) goto Done;
+    if (!IsGoodVal("Duplicated override", cmsEvalToneCurveFloat(curves[2], 0.5F), 0.25, 0)) goto Done;
+    if (!IsGoodVal("Other built-in type", cmsEvalToneCurveFloat(curves[3], 0.5F), 0.25, 0)) goto Done;
+    if (!IsGoodVal("Plugin curve segment", cmsEvalToneCurveFloat(curves[4], 0.25F), 0.125, 0)) goto Done;
+    if (!IsGoodVal("Built-in curve segment", cmsEvalToneCurveFloat(curves[4], 0.75F), 0.375, 0)) goto Done;
+    ok = 1;
+
+Done:
+    for (i = 0; i < 5; i++)
+        cmsFreeToneCurve(curves[i]);
+    if (copy != NULL) cmsDeleteContext(copy);
+    if (ctx != NULL) cmsDeleteContext(ctx);
+    return ok;
+}
+
 // --------------------------------------------------------------------------------------------------
 // In this test, the DupContext function will be checked as well                      
 // --------------------------------------------------------------------------------------------------
@@ -612,7 +683,7 @@ cmsInt32Number CheckParametricCurvePlugin(void)
      cmsDeleteContext(cpy);
      cmsDeleteContext(cpy2);
 
-     return 1;
+     return CheckParametricCurveOverride();
 
 Error:
      
