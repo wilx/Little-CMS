@@ -3172,6 +3172,77 @@ cmsInt32Number CheckLUTcreation(void)
     return (n1 == 0) && (n2 == 0);
 }
 
+// Specialized and generic matrix stages retain their behavior after duplication.
+static
+cmsInt32Number CheckMatrixStageOffset(cmsUInt32Number InputChannels,
+                                    cmsUInt32Number OutputChannels,
+                                    cmsUInt32Number OffsetKind)
+{
+    const cmsFloat64Number RowFactors[5] = { 1, -2, 3, -4, 5 };
+    const cmsFloat64Number Zero[5] = { 0, 0, 0, 0, 0 };
+    const cmsFloat64Number Offset[5] = { 0.25, -0.5, 0.75, -1, 1.25 };
+    const cmsFloat64Number* Offsets[3] = { NULL, Zero, Offset };
+    const cmsFloat32Number In[5] = { 0.25F, 0.5F, 0.75F, 1.0F, 1.25F };
+    const cmsFloat64Number WeightedSums[5] = { 0.25, 1.25, 3.5, 7.5, 13.75 };
+    cmsFloat64Number Matrix[25], Expected[5];
+    cmsFloat32Number Out[5];
+    cmsPipeline *Original = NULL, *Copy = NULL;
+    cmsStage* Stage = NULL;
+    cmsBool Inserted;
+    cmsUInt32Number i, j;
+
+    for (i = 0; i < OutputChannels; i++) {
+        for (j = 0; j < InputChannels; j++)
+            Matrix[i*InputChannels + j] = RowFactors[i] * (j + 1);
+
+        Expected[i] = RowFactors[i] * WeightedSums[InputChannels - 1];
+        if (OffsetKind == 2) Expected[i] += Offset[i];
+    }
+
+    Original = cmsPipelineAlloc(DbgThread(), InputChannels, OutputChannels);
+    Stage = cmsStageAllocMatrix(DbgThread(), OutputChannels, InputChannels, Matrix, Offsets[OffsetKind]);
+    if (Original == NULL || Stage == NULL) goto Error;
+    Inserted = cmsPipelineInsertStage(Original, cmsAT_END, Stage);
+    Stage = NULL; // The pipeline owns the stage.
+    if (!Inserted) goto Error;
+
+    cmsPipelineEvalFloat(In, Out, Original);
+    for (i = 0; i < OutputChannels; i++)
+        if (!IsGoodVal("Matrix offset", Out[i], Expected[i], 0)) goto Error;
+
+    Copy = cmsPipelineDup(Original);
+    if (Copy == NULL) goto Error;
+    cmsPipelineFree(Original);
+    Original = NULL;
+
+    cmsPipelineEvalFloat(In, Out, Copy);
+    for (i = 0; i < OutputChannels; i++)
+        if (!IsGoodVal("Duplicated matrix offset", Out[i], Expected[i], 0)) goto Error;
+
+    cmsPipelineFree(Copy);
+    return 1;
+
+Error:
+    if (Stage != NULL) cmsStageFree(Stage);
+    if (Original != NULL) cmsPipelineFree(Original);
+    if (Copy != NULL) cmsPipelineFree(Copy);
+    return 0;
+}
+
+static
+cmsInt32Number CheckMatrixStageOffsets(void)
+{
+    cmsUInt32Number InputChannels, OutputChannels, OffsetKind;
+
+    // 1, 3 and 4 select specializations; 2 and 5 exercise generic fallbacks.
+    for (InputChannels = 1; InputChannels <= 5; InputChannels++)
+        for (OutputChannels = 1; OutputChannels <= 5; OutputChannels++)
+            for (OffsetKind = 0; OffsetKind < 3; OffsetKind++)
+                if (!CheckMatrixStageOffset(InputChannels, OutputChannels, OffsetKind)) return 0;
+
+    return 1;
+}
+
 // Create a MPE for a identity matrix
 static
 void AddIdentityMatrix(cmsPipeline* lut)
@@ -9885,6 +9956,7 @@ int main(int argc, char* argv[])
 
     // LUT basics
     Check("LUT creation & dup", CheckLUTcreation);
+    Check("Matrix offsets & dup", CheckMatrixStageOffsets);
     Check("1 Stage LUT ", Check1StageLUT);
     Check("2 Stage LUT ", Check2StageLUT);
     Check("2 Stage LUT (16 bits)", Check2Stage16LUT);
