@@ -194,7 +194,7 @@ exp_normal(double x, double xtail)
 
 /* General-domain wrapper: unsupported inputs and result ranges use libm.
    Arithmetic and coefficient tables inside the normal kernel are unchanged. */
-CMS_POW_TARGET static double
+CMS_POW_TARGET __attribute__((always_inline)) static inline double
 PowFMA(double x, double y)
 {
   CMS_POW_CONTRACT
@@ -241,11 +241,44 @@ static PowEvaluator ResolvePow(void)
 
 double _cmsPowCore(double x, double y) __attribute__((ifunc("ResolvePow")));
 
+// Keep exactly the same final subtraction/division, but perform it before
+// returning so the curve callback can tail-call this helper.
+CMS_POW_TARGET static double PowAffineFMA(double x, double y, double subtract, double divisor)
+{
+    CMS_POW_CONTRACT
+    return (PowFMA(x, y) - subtract) / divisor;
+}
+
+static double PowAffineDefault(double x, double y, double subtract, double divisor)
+{
+    return (pow(x, y) - subtract) / divisor;
+}
+
+typedef double (*PowAffineEvaluator)(double, double, double, double);
+
+static PowAffineEvaluator ResolvePowAffine(void)
+{
+    __builtin_cpu_init();
+    if (__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma"))
+        return PowAffineFMA;
+    return PowAffineDefault;
+}
+
+double _cmsPowAffine(double x, double y, double subtract, double divisor)
+    __attribute__((ifunc("ResolvePowAffine")));
+
+
 #else
 
 double _cmsPowCore(double x, double y)
 {
     return pow(x, y);
 }
+
+double _cmsPowAffine(double x, double y, double subtract, double divisor)
+{
+    return (pow(x, y) - subtract) / divisor;
+}
+
 
 #endif

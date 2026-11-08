@@ -24,6 +24,9 @@
 //---------------------------------------------------------------------------------
 //
 #include "lcms2_internal.h"
+#include <float.h>
+
+#include <stdint.h>
 
 // Tone curves are powerful constructs that can contain curves specified in diverse ways.
 // The curve is stored in segments, where each segment can be sampled or specified by parameters.
@@ -56,6 +59,8 @@ typedef struct _cmsParametricCurvesCollection_st {
 
 // Select the built-in evaluator when allocating a curve segment.
 static cmsParametricCurveEvaluator GetDefaultParametricEvaluator(cmsInt32Number Type);
+static cmsParametricCurveEvaluator GetPreparedParametricEvaluator(cmsInt32Number Type, const cmsFloat64Number Params[]);
+static cmsBool PrepareInverse5Segments(cmsContext ContextID, cmsToneCurve* Curve);
 
 // The built-in list
 static _cmsParametricCurvesCollection DefaultCurves = {
@@ -240,6 +245,7 @@ cmsToneCurve* AllocateToneCurveStruct(cmsContext ContextID, cmsUInt32Number nEnt
     else {
         p ->Segments = (cmsCurveSegment*) _cmsCalloc(ContextID, nSegments, sizeof(cmsCurveSegment));
         if (p ->Segments == NULL) goto Error;
+        p ->OriginalSegments = p ->Segments;
 
         p ->Evals    = (cmsParametricCurveEvaluator*) _cmsCalloc(ContextID, nSegments, sizeof(cmsParametricCurveEvaluator));
         if (p ->Evals == NULL) goto Error;
@@ -292,10 +298,12 @@ cmsToneCurve* AllocateToneCurveStruct(cmsContext ContextID, cmsUInt32Number nEnt
             c = GetParametricCurveByType(ContextID, Segments[i].Type, NULL);
             if (c != NULL)
                 p ->Evals[i] = (c == &DefaultCurves)
-                    ? GetDefaultParametricEvaluator(Segments[i].Type)
+                    ? GetPreparedParametricEvaluator(Segments[i].Type, Segments[i].Params)
                     : c ->Evaluator;
         }
     }
+
+    if (!PrepareInverse5Segments(ContextID, p)) goto Error;
 
     p ->InterpParams = _cmsComputeInterpParams(ContextID, p ->nEntries, 1, 1, p->Table16, CMS_LERP_FLAGS_16BITS);
     if (p->InterpParams != NULL)
@@ -307,6 +315,7 @@ Error:
         if (p ->SegInterp && p ->SegInterp[i]) _cmsFree(ContextID, p ->SegInterp[i]);
     }
     if (p -> SegInterp) _cmsFree(ContextID, p -> SegInterp);
+    if (p ->OriginalSegments != p ->Segments) _cmsFree(ContextID, p ->OriginalSegments);
     if (p -> Segments) _cmsFree(ContextID, p -> Segments);
     if (p -> Evals) _cmsFree(ContextID, p -> Evals);
     if (p ->Table16) _cmsFree(ContextID, p ->Table16);
@@ -643,6 +652,22 @@ cmsFloat64Number EvalParametric5Inverse(cmsInt32Number Type, const cmsFloat64Num
     return Val;
 }
 
+// The constructor has established that gamma, a and c are finite and
+// outside the near-zero tolerance. All per-sample arithmetic is unchanged.
+static
+cmsFloat64Number EvalParametric5InverseValid(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number e;
+    cmsFloat64Number disc = Params[3] * Params[4] + Params[6];
+    cmsUNUSED_PARAMETER(Type);
+    if (R >= disc) {
+        e = R - Params[5];
+        if (e < 0) return 0;
+        return (_cmsPow(e, 1.0 / Params[0]) - Params[2]) / Params[1];
+    }
+    return (R - Params[6]) / Params[3];
+}
+
 // Types 6,7,8 comes from segmented curves as described in ICCSpecRevision_02_11_06_Float.pdf
 // Type 6 is basically identical to type 5 without d
 
@@ -863,6 +888,73 @@ cmsParametricCurveEvaluator GetDefaultParametricEvaluator(cmsInt32Number Type)
     }
 }
 
+static
+cmsBool ValidInverse5Denominator(cmsFloat64Number x)
+{
+#if DBL_MANT_DIG == 53 && DBL_MAX_EXP == 1024
+    uint64_t bits, tolerance;
+    cmsFloat64Number limit = MATRIX_DET_TOLERANCE;
+    if (sizeof(x) != sizeof(bits)) return FALSE;
+    memcpy(&bits, &x, sizeof(bits));
+    memcpy(&tolerance, &limit, sizeof(tolerance));
+    bits &= UINT64_C(0x7fffffffffffffff);
+    return bits >= tolerance && bits < UINT64_C(0x7ff0000000000000);
+#else
+    cmsUNUSED_PARAMETER(x);
+    return FALSE;
+#endif
+}
+
+static
+cmsParametricCurveEvaluator GetPreparedParametricEvaluator(cmsInt32Number Type, const cmsFloat64Number Params[])
+{
+    if (Type == -5 && ValidInverse5Denominator(Params[0]) &&
+        ValidInverse5Denominator(Params[1]) && ValidInverse5Denominator(Params[3]))
+        return EvalParametric5InverseValid;
+    return GetDefaultParametricEvaluator(Type);
+}
+
+// Prepared values assume the floating-point settings remain fixed for
+// the curve lifetime, as for other values calculated during construction.
+static
+cmsFloat64Number EvalParametric5InverseCached(cmsInt32Number Type, const cmsFloat64Number Params[], cmsFloat64Number R)
+{
+    cmsFloat64Number e;
+    cmsUNUSED_PARAMETER(Type);
+    if (R >= Params[8]) {
+        e = R - Params[5];
+        if (e < 0) return 0;
+        return _cmsPowAffine(e, Params[7], Params[2], Params[1]);
+    }
+    return (R - Params[6]) / Params[3];
+}
+
+static cmsBool PrepareInverse5Segments(cmsContext ContextID, cmsToneCurve* Curve)
+{
+    cmsUInt32Number i;
+    for (i = 0; i < Curve->nSegments; ++i)
+        if (Curve->Evals[i] == EvalParametric5InverseValid) break;
+    if (i == Curve->nSegments) return TRUE;
+
+    // Keep publicly inspectable segments and plugin parameters unchanged.
+    Curve->Segments = (cmsCurveSegment*) _cmsDupMem(ContextID, Curve->OriginalSegments,
+        Curve->nSegments * sizeof(cmsCurveSegment));
+    if (Curve->Segments == NULL) {
+        Curve->Segments = Curve->OriginalSegments;
+        return FALSE;
+    }
+
+    for (i = 0; i < Curve->nSegments; ++i) {
+        if (Curve->Evals[i] == EvalParametric5InverseValid) {
+            cmsFloat64Number* p = Curve->Segments[i].Params;
+            p[7] = 1.0 / p[0];
+            p[8] = p[3] * p[4] + p[6];
+            Curve->Evals[i] = EvalParametric5InverseCached;
+        }
+    }
+    return TRUE;
+}
+
 // Evaluate a segmented function for a single value. Return -Inf if no valid segment found .
 // If fn type is 0, perform an interpolation on the table
 static
@@ -1070,6 +1162,9 @@ void CMSEXPORT cmsFreeToneCurve(cmsToneCurve* Curve)
     if (Curve -> Table16)
         _cmsFree(ContextID, Curve ->Table16);
 
+    if (Curve ->OriginalSegments != Curve ->Segments)
+        _cmsFree(ContextID, Curve ->OriginalSegments);
+
     if (Curve ->Segments) {
 
         cmsUInt32Number i;
@@ -1113,7 +1208,7 @@ cmsToneCurve* CMSEXPORT cmsDupToneCurve(const cmsToneCurve* In)
 {
     if (In == NULL) return NULL;
 
-    return  AllocateToneCurveStruct(In ->InterpParams ->ContextID, In ->nEntries, In ->nSegments, In ->Segments, In ->Table16);
+    return  AllocateToneCurveStruct(In ->InterpParams ->ContextID, In ->nEntries, In ->nSegments, In ->OriginalSegments, In ->Table16);
 }
 
 // Joins two curves for X and Y. Curves should be monotonic.
@@ -1653,6 +1748,6 @@ const cmsCurveSegment* CMSEXPORT cmsGetToneCurveSegment(cmsInt32Number n, const 
     _cmsAssert(t != NULL);
 
     if (n < 0 || n >= (cmsInt32Number) t->nSegments) return NULL;
-    return t->Segments + n;
+    return t->OriginalSegments + n;
 }
 

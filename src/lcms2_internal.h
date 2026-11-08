@@ -101,6 +101,12 @@ __attribute__((visibility("hidden")))
 #endif
 cmsFloat64Number _cmsPowCore(cmsFloat64Number x, cmsFloat64Number y);
 
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((visibility("hidden")))
+#endif
+cmsFloat64Number _cmsPowAffine(cmsFloat64Number x, cmsFloat64Number y,
+                              cmsFloat64Number subtract, cmsFloat64Number divisor);
+
 cmsINLINE cmsFloat64Number _cmsPow(cmsFloat64Number x, cmsFloat64Number y)
 {
 #if defined(__GNUC__) || defined(__clang__)
@@ -925,6 +931,7 @@ struct _cms_curve_struct {
     // 16 bit Table-based representation follows
     cmsUInt32Number    nEntries;      // Number of table elements
     cmsUInt16Number*   Table16;       // The table itself.
+    cmsCurveSegment*   OriginalSegments; // Public metadata; Segments may hold prepared values
 };
 
 
