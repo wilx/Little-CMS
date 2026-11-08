@@ -5061,7 +5061,7 @@ void *Type_vcgt_Read(struct _cms_typehandler_struct* self,
             // b=c=d=f=0
 
            Params[0] = Colorant[n].Gamma;
-           Params[1] = pow((Colorant[n].Max - Colorant[n].Min), (1.0 / Colorant[n].Gamma));
+           Params[1] = _cmsPow((Colorant[n].Max - Colorant[n].Min), (1.0 / Colorant[n].Gamma));
            Params[2] = 0;
            Params[3] = 0;
            Params[4] = 0;
@@ -5114,7 +5114,7 @@ cmsBool Type_vcgt_Write(struct _cms_typehandler_struct* self, cmsIOHANDLER* io, 
 
                 v.Gamma = Curves[i] ->Segments[0].Params[0];
                 v.Min   = Curves[i] ->Segments[0].Params[5];
-                v.Max   = pow(Curves[i] ->Segments[0].Params[1], v.Gamma) + v.Min;
+                v.Max   = _cmsPow(Curves[i] ->Segments[0].Params[1], v.Gamma) + v.Min;
 
                 if (!_cmsWrite15Fixed16Number(io, v.Gamma)) return FALSE;
                 if (!_cmsWrite15Fixed16Number(io, v.Min)) return FALSE;

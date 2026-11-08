@@ -95,6 +95,25 @@
 #   define CMS_NO_SANITIZE 
 #endif
 
+// Private power evaluator. No public API or structure layout changes.
+// Evaluate a nonconstant power through the private platform dispatch or system-pow fallback.
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((visibility("hidden")))
+#endif
+cmsFloat64Number _cmsPowCore(cmsFloat64Number x, cmsFloat64Number y);
+
+// Preserve compiler folding for constant powers before dispatching runtime arguments.
+cmsINLINE cmsFloat64Number _cmsPow(cmsFloat64Number x, cmsFloat64Number y)
+{
+#if defined(__GNUC__) || defined(__clang__)
+    // Preserve constant folding and the compiler's pow(x, 2) -> x*x rule.
+    if ((__builtin_constant_p(x) && __builtin_constant_p(y)) ||
+        (__builtin_constant_p(y) && y == 2.0))
+        return pow(x, y);
+#endif
+    return _cmsPowCore(x, y);
+}
+
 // Other replacement functions
 #ifdef _MSC_VER
 # ifndef snprintf

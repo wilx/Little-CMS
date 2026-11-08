@@ -66,13 +66,13 @@ cmsFloat64Number compute_n(cmsCIECAM02* pMod)
 static
 cmsFloat64Number compute_z(cmsCIECAM02* pMod)
 {
-    return (1.48 + pow(pMod -> n, 0.5));
+    return (1.48 + _cmsPow(pMod -> n, 0.5));
 }
 
 static
 cmsFloat64Number computeNbb(cmsCIECAM02* pMod)
 {
-    return (0.725 * pow((1.0 / pMod -> n), 0.2));
+    return (0.725 * _cmsPow((1.0 / pMod -> n), 0.2));
 }
 
 static
@@ -81,9 +81,9 @@ cmsFloat64Number computeFL(cmsCIECAM02* pMod)
     cmsFloat64Number k, FL;
 
     k = 1.0 / ((5.0 * pMod->LA) + 1.0);
-    FL = 0.2 * pow(k, 4.0) * (5.0 * pMod->LA) + 0.1 *
-        (pow((1.0 - pow(k, 4.0)), 2.0)) *
-        (pow((5.0 * pMod->LA), (1.0 / 3.0)));
+    FL = 0.2 * _cmsPow(k, 4.0) * (5.0 * pMod->LA) + 0.1 *
+        (_cmsPow((1.0 - _cmsPow(k, 4.0)), 2.0)) *
+        (_cmsPow((5.0 * pMod->LA), (1.0 / 3.0)));
 
     return FL;
 }
@@ -154,11 +154,11 @@ CAM02COLOR NonlinearCompression(CAM02COLOR clr, cmsCIECAM02* pMod)
     for (i = 0; i < 3; i++) {
         if (clr.RGBp[i] < 0) {
 
-            temp = pow((-1.0 * pMod->FL * clr.RGBp[i] / 100.0), 0.42);
+            temp = _cmsPow((-1.0 * pMod->FL * clr.RGBp[i] / 100.0), 0.42);
             clr.RGBpa[i] = (-1.0 * 400.0 * temp) / (temp + 27.13) + 0.1;
         }
         else {
-            temp = pow((pMod->FL * clr.RGBp[i] / 100.0), 0.42);
+            temp = _cmsPow((pMod->FL * clr.RGBp[i] / 100.0), 0.42);
             clr.RGBpa[i] = (400.0 * temp) / (temp + 27.13) + 0.1;
         }
     }
@@ -219,21 +219,21 @@ CAM02COLOR ComputeCorrelates(CAM02COLOR clr, cmsCIECAM02* pMod)
         clr.H = 300 + ((100*((clr.h - 237.53)/1.2)) / temp);
     }
 
-    clr.J = 100.0 * pow((clr.A / pMod->adoptedWhite.A),
+    clr.J = 100.0 * _cmsPow((clr.A / pMod->adoptedWhite.A),
         (pMod->c * pMod->z));
 
-    clr.Q = (4.0 / pMod->c) * pow((clr.J / 100.0), 0.5) *
-        (pMod->adoptedWhite.A + 4.0) * pow(pMod->FL, 0.25);
+    clr.Q = (4.0 / pMod->c) * _cmsPow((clr.J / 100.0), 0.5) *
+        (pMod->adoptedWhite.A + 4.0) * _cmsPow(pMod->FL, 0.25);
 
-    t = (e * pow(((a * a) + (b * b)), 0.5)) /
+    t = (e * _cmsPow(((a * a) + (b * b)), 0.5)) /
         (clr.RGBpa[0] + clr.RGBpa[1] +
         ((21.0 / 20.0) * clr.RGBpa[2]));
 
-    clr.C = pow(t, 0.9) * pow((clr.J / 100.0), 0.5) *
-        pow((1.64 - pow(0.29, pMod->n)), 0.73);
+    clr.C = _cmsPow(t, 0.9) * _cmsPow((clr.J / 100.0), 0.5) *
+        _cmsPow((1.64 - _cmsPow(0.29, pMod->n)), 0.73);
 
-    clr.M = clr.C * pow(pMod->FL, 0.25);
-    clr.s = 100.0 * pow((clr.M / clr.Q), 0.5);
+    clr.M = clr.C * _cmsPow(pMod->FL, 0.25);
+    clr.s = 100.0 * _cmsPow((clr.M / clr.Q), 0.5);
 
     return clr;
 }
@@ -246,13 +246,13 @@ CAM02COLOR InverseCorrelates(CAM02COLOR clr, cmsCIECAM02* pMod)
     cmsFloat64Number t, e, p1, p2, p3, p4, p5, hr, d2r;
     d2r = 3.141592654 / 180.0;
 
-    t = pow( (clr.C / (pow((clr.J / 100.0), 0.5) *
-        (pow((1.64 - pow(0.29, pMod->n)), 0.73)))),
+    t = _cmsPow( (clr.C / (_cmsPow((clr.J / 100.0), 0.5) *
+        (_cmsPow((1.64 - _cmsPow(0.29, pMod->n)), 0.73)))),
         (1.0 / 0.9) );
     e = ((12500.0 / 13.0) * pMod->Nc * pMod->Ncb) *
         (cos((clr.h * d2r + 2.0)) + 3.8);
 
-    clr.A = pMod->adoptedWhite.A * pow(
+    clr.A = pMod->adoptedWhite.A * _cmsPow(
            (clr.J / 100.0),
            (1.0 / (pMod->c * pMod->z)));
 
@@ -307,7 +307,7 @@ CAM02COLOR InverseNonlinearity(CAM02COLOR clr, cmsCIECAM02* pMod)
         if ((clr.RGBpa[i] - 0.1) < 0) c1 = -1;
         else                               c1 = 1;
         clr.RGBp[i] = c1 * (100.0 / pMod->FL) *
-            pow(((27.13 * fabs(clr.RGBpa[i] - 0.1)) /
+            _cmsPow(((27.13 * fabs(clr.RGBpa[i] - 0.1)) /
             (400.0 - fabs(clr.RGBpa[i] - 0.1))),
             (1.0 / 0.42));
     }

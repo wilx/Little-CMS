@@ -27,6 +27,7 @@
 		418B0A5F24C5E1C900DF2C21 /* cmswtpnt.c in Sources */ = {isa = PBXBuildFile; fileRef = 418B0A4524C5E1C800DF2C21 /* cmswtpnt.c */; };
 		418B0A6024C5E1C900DF2C21 /* cmsmtrx.c in Sources */ = {isa = PBXBuildFile; fileRef = 418B0A4624C5E1C800DF2C21 /* cmsmtrx.c */; };
 		418B0A6124C5E1C900DF2C21 /* cmspcs.c in Sources */ = {isa = PBXBuildFile; fileRef = 418B0A4724C5E1C800DF2C21 /* cmspcs.c */; };
+		C0D320262026110800000001 /* cmspow.c in Sources */ = {isa = PBXBuildFile; fileRef = C0D320262026110800000002 /* cmspow.c */; };
 		418B0A6224C5E1C900DF2C21 /* cmsps2.c in Sources */ = {isa = PBXBuildFile; fileRef = 418B0A4824C5E1C800DF2C21 /* cmsps2.c */; };
 		418B0A6324C5E1C900DF2C21 /* cmsnamed.c in Sources */ = {isa = PBXBuildFile; fileRef = 418B0A4924C5E1C800DF2C21 /* cmsnamed.c */; };
 		418B0A6424C5E1C900DF2C21 /* cmserr.c in Sources */ = {isa = PBXBuildFile; fileRef = 418B0A4A24C5E1C800DF2C21 /* cmserr.c */; };
@@ -269,6 +270,7 @@
 		418B0A4524C5E1C800DF2C21 /* cmswtpnt.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = cmswtpnt.c; path = ../../../src/cmswtpnt.c; sourceTree = "<group>"; };
 		418B0A4624C5E1C800DF2C21 /* cmsmtrx.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = cmsmtrx.c; path = ../../../src/cmsmtrx.c; sourceTree = "<group>"; };
 		418B0A4724C5E1C800DF2C21 /* cmspcs.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = cmspcs.c; path = ../../../src/cmspcs.c; sourceTree = "<group>"; };
+		C0D320262026110800000002 /* cmspow.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = cmspow.c; path = ../../../src/cmspow.c; sourceTree = "<group>"; };
 		418B0A4824C5E1C800DF2C21 /* cmsps2.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = cmsps2.c; path = ../../../src/cmsps2.c; sourceTree = "<group>"; };
 		418B0A4924C5E1C800DF2C21 /* cmsnamed.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = cmsnamed.c; path = ../../../src/cmsnamed.c; sourceTree = "<group>"; };
 		418B0A4A24C5E1C800DF2C21 /* cmserr.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = cmserr.c; path = ../../../src/cmserr.c; sourceTree = "<group>"; };
@@ -491,6 +493,7 @@
 				418B0A3E24C5E1C700DF2C21 /* cmsopt.c */,
 				418B0A4324C5E1C800DF2C21 /* cmspack.c */,
 				418B0A4724C5E1C800DF2C21 /* cmspcs.c */,
+				C0D320262026110800000002 /* cmspow.c */,
 				418B0A4D24C5E1C800DF2C21 /* cmsplugin.c */,
 				418B0A4824C5E1C800DF2C21 /* cmsps2.c */,
 				418B0A5124C5E1C900DF2C21 /* cmssamp.c */,
@@ -974,6 +977,7 @@
 				418B0A5F24C5E1C900DF2C21 /* cmswtpnt.c in Sources */,
 				418B0A6024C5E1C900DF2C21 /* cmsmtrx.c in Sources */,
 				418B0A6124C5E1C900DF2C21 /* cmspcs.c in Sources */,
+				C0D320262026110800000001 /* cmspow.c in Sources */,
 				418B0A6224C5E1C900DF2C21 /* cmsps2.c in Sources */,
 				418B0A6324C5E1C900DF2C21 /* cmsnamed.c in Sources */,
 				418B0A6424C5E1C900DF2C21 /* cmserr.c in Sources */,
