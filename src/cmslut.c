@@ -307,33 +307,69 @@ cmsStage* CMSEXPORT _cmsStageAllocIdentityCurves(cmsContext ContextID, cmsUInt32
 // *************************************************************************************************
 
 
-// Special care should be taken here because precision loss. A temporary cmsFloat64Number buffer is being used
-static
-void EvaluateMatrix(const cmsFloat32Number In[],
-                    cmsFloat32Number Out[],
-                    const cmsStage *mpe)
-{
-    cmsUInt32Number i, j;
-    _cmsStageMatrixData* Data = (_cmsStageMatrixData*) mpe ->Data;
-    cmsFloat64Number Tmp;
-
-    // Input is already in 0..1.0 notation
-    for (i=0; i < mpe ->OutputChannels; i++) {
-
-        Tmp = 0;
-        for (j=0; j < mpe->InputChannels; j++) {
-            Tmp += In[j] * Data->Double[i*mpe->InputChannels + j];
-        }
-
-        if (Data ->Offset != NULL)
-            Tmp += Data->Offset[i];
-
-        Out[i] = (cmsFloat32Number) Tmp;
-    }
-
-
-    // Output in 0..1.0 domain
+// Input and output are in the 0..1.0 domain. Accumulate in double precision.
+// WithOffset is a compile-time constant in every generated evaluator.
+// Generate a scalar matrix callback with fixed offset handling and either fixed or runtime channel counts.
+#define DEFINE_MATRIX_EVALUATOR(Name, InputChans, OutputChans, WithOffset) \
+static void Name(const cmsFloat32Number In[], cmsFloat32Number Out[], const cmsStage* mpe) \
+{ \
+    cmsUInt32Number i, j; \
+    _cmsStageMatrixData* Data = (_cmsStageMatrixData*) mpe ->Data; \
+    for (i = 0; i < (OutputChans); i++) { \
+        cmsFloat64Number Tmp = 0; \
+        for (j = 0; j < (InputChans); j++) { \
+            Tmp += In[j] * Data->Double[i*(InputChans) + j]; \
+        } \
+        if (WithOffset) Tmp += Data->Offset[i]; \
+        Out[i] = (cmsFloat32Number) Tmp; \
+    } \
 }
+
+DEFINE_MATRIX_EVALUATOR(EvaluateMatrixWithOffset, mpe->InputChannels, mpe->OutputChannels, TRUE)
+DEFINE_MATRIX_EVALUATOR(EvaluateMatrixNoOffset, mpe->InputChannels, mpe->OutputChannels, FALSE)
+
+// Suffixes list input channels first, then output channels.
+// Apply M to every input/output pair drawn from 1, 3 and 4 channels.
+#define MATRIX_SPECIALIZATIONS(M) \
+    M(1, 1) \
+    M(1, 3) \
+    M(1, 4) \
+    M(3, 1) \
+    M(3, 3) \
+    M(3, 4) \
+    M(4, 1) \
+    M(4, 3) \
+    M(4, 4)
+
+// Emit both offset variants for one channel-count pair, named with input/output suffixes.
+#define DEFINE_MATRIX_SPECIALIZATION(InputChans, OutputChans) \
+    DEFINE_MATRIX_EVALUATOR(EvaluateMatrixWithOffset_##InputChans##_##OutputChans, InputChans, OutputChans, TRUE) \
+    DEFINE_MATRIX_EVALUATOR(EvaluateMatrixNoOffset_##InputChans##_##OutputChans, InputChans, OutputChans, FALSE)
+
+MATRIX_SPECIALIZATIONS(DEFINE_MATRIX_SPECIALIZATION)
+
+#undef DEFINE_MATRIX_SPECIALIZATION
+#undef DEFINE_MATRIX_EVALUATOR
+
+// Choose offset and channel-count specializations, falling back to the matching generic evaluator.
+static
+_cmsStageEvalFn GetMatrixEvaluator(cmsUInt32Number InputChannels,
+                                 cmsUInt32Number OutputChannels,
+                                 cmsBool WithOffset)
+{
+#define SELECT_MATRIX_SPECIALIZATION(InputChans, OutputChans) \
+    if (InputChannels == (InputChans) && OutputChannels == (OutputChans)) \
+        return WithOffset ? EvaluateMatrixWithOffset_##InputChans##_##OutputChans \
+                          : EvaluateMatrixNoOffset_##InputChans##_##OutputChans;
+
+    MATRIX_SPECIALIZATIONS(SELECT_MATRIX_SPECIALIZATION)
+
+#undef SELECT_MATRIX_SPECIALIZATION
+
+    return WithOffset ? EvaluateMatrixWithOffset : EvaluateMatrixNoOffset;
+}
+
+#undef MATRIX_SPECIALIZATIONS
 
 
 // Duplicate a yet-existing matrix element
@@ -391,8 +427,10 @@ cmsStage*  CMSEXPORT cmsStageAllocMatrix(cmsContext ContextID, cmsUInt32Number R
     if (n >= UINT_MAX / Rows) return NULL;
     if (n < Rows || n < Cols) return NULL;
 
+    // Dimensions and offset presence are fixed for the lifetime of this stage.
     NewMPE = _cmsStageAllocPlaceholder(ContextID, cmsSigMatrixElemType, Cols, Rows,
-                                     EvaluateMatrix, MatrixElemDup, MatrixElemTypeFree, NULL );
+                                     GetMatrixEvaluator(Cols, Rows, Offset != NULL),
+                                     MatrixElemDup, MatrixElemTypeFree, NULL );
     if (NewMPE == NULL) return NULL;
 
 
