@@ -217,7 +217,7 @@ exp_normal(double x, double xtail)
 
 /* General-domain wrapper: unsupported inputs and result ranges use libm.
    Arithmetic and coefficient tables inside the normal kernel are unchanged. */
-CMS_POW_TARGET static double
+CMS_POW_TARGET __attribute__((always_inline)) static inline double
 PowFMA(double x, double y)
 {
   CMS_POW_CONTRACT
@@ -266,6 +266,36 @@ static PowEvaluator ResolvePow(void)
 // Evaluate a nonconstant power through the private platform dispatch or system-pow fallback.
 double _cmsPowCore(double x, double y) __attribute__((ifunc("ResolvePow")));
 
+// Keep exactly the same final subtraction/division, but perform it before
+// returning so the curve callback can tail-call this helper.
+CMS_POW_TARGET static double PowAffineFMA(double x, double y, double subtract, double divisor)
+{
+    CMS_POW_CONTRACT
+    return (PowFMA(x, y) - subtract) / divisor;
+}
+
+// Evaluate the affine power expression with system pow on CPUs without the accelerated kernel.
+static double PowAffineDefault(double x, double y, double subtract, double divisor)
+{
+    return (pow(x, y) - subtract) / divisor;
+}
+
+typedef double (*PowAffineEvaluator)(double, double, double, double);
+
+// Select the affine power evaluator once, using the same AVX2/FMA capability checks as plain pow.
+static PowAffineEvaluator ResolvePowAffine(void)
+{
+    __builtin_cpu_init();
+    if (__builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma"))
+        return PowAffineFMA;
+    return PowAffineDefault;
+}
+
+// Compute (x^y - subtract) / divisor with the original subtraction and division order.
+double _cmsPowAffine(double x, double y, double subtract, double divisor)
+    __attribute__((ifunc("ResolvePowAffine")));
+
+
 #else
 
 // Evaluate a nonconstant power through the private platform dispatch or system-pow fallback.
@@ -273,5 +303,12 @@ double _cmsPowCore(double x, double y)
 {
     return pow(x, y);
 }
+
+// Compute (x^y - subtract) / divisor with the original subtraction and division order.
+double _cmsPowAffine(double x, double y, double subtract, double divisor)
+{
+    return (pow(x, y) - subtract) / divisor;
+}
+
 
 #endif
