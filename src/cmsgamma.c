@@ -359,7 +359,7 @@ cmsFloat64Number EvalParametric1(cmsInt32Number Type, const cmsFloat64Number Par
             Val = 0;
     }
     else
-        Val = pow(R, Params[0]);
+        Val = _cmsPow(R, Params[0]);
 
     return Val;
 }
@@ -385,7 +385,7 @@ cmsFloat64Number EvalParametric1Inverse(cmsInt32Number Type, const cmsFloat64Num
         if (fabs(Params[0]) < MATRIX_DET_TOLERANCE)
             Val = PLUS_INF;
         else
-            Val = pow(R, 1 / Params[0]);
+            Val = _cmsPow(R, 1 / Params[0]);
     }
 
     return Val;
@@ -415,7 +415,7 @@ cmsFloat64Number EvalParametric2(cmsInt32Number Type, const cmsFloat64Number Par
             e = Params[1] * R + Params[2];
 
             if (e > 0)
-                Val = pow(e, Params[0]);
+                Val = _cmsPow(e, Params[0]);
             else
                 Val = 0;
         }
@@ -446,7 +446,7 @@ cmsFloat64Number EvalParametric2Inverse(cmsInt32Number Type, const cmsFloat64Num
         if (R < 0)
             Val = 0;
         else
-            Val = (pow(R, 1.0 / Params[0]) - Params[2]) / Params[1];
+            Val = (_cmsPow(R, 1.0 / Params[0]) - Params[2]) / Params[1];
 
         if (Val < 0)
             Val = 0;
@@ -481,7 +481,7 @@ cmsFloat64Number EvalParametric3(cmsInt32Number Type, const cmsFloat64Number Par
             e = Params[1] * R + Params[2];
 
             if (e > 0)
-                Val = pow(e, Params[0]) + Params[3];
+                Val = _cmsPow(e, Params[0]) + Params[3];
             else
                 Val = 0;
         }
@@ -515,7 +515,7 @@ cmsFloat64Number EvalParametric3Inverse(cmsInt32Number Type, const cmsFloat64Num
             e = R - Params[3];
 
             if (e > 0)
-                Val = (pow(e, 1 / Params[0]) - Params[2]) / Params[1];
+                Val = (_cmsPow(e, 1 / Params[0]) - Params[2]) / Params[1];
             else
                 Val = 0;
         }
@@ -543,7 +543,7 @@ cmsFloat64Number EvalParametric4(cmsInt32Number Type, const cmsFloat64Number Par
         e = Params[1]*R + Params[2];
 
         if (e > 0)
-            Val = pow(e, Params[0]);
+            Val = _cmsPow(e, Params[0]);
         else
             Val = 0;
     }
@@ -568,7 +568,7 @@ cmsFloat64Number EvalParametric4Inverse(cmsInt32Number Type, const cmsFloat64Num
     if (e < 0)
         disc = 0;
     else
-        disc = pow(e, Params[0]);
+        disc = _cmsPow(e, Params[0]);
 
     if (R >= disc) {
 
@@ -578,7 +578,7 @@ cmsFloat64Number EvalParametric4Inverse(cmsInt32Number Type, const cmsFloat64Num
             Val = 0;
 
         else
-            Val = (pow(R, 1.0 / Params[0]) - Params[2]) / Params[1];
+            Val = (_cmsPow(R, 1.0 / Params[0]) - Params[2]) / Params[1];
     }
     else {
 
@@ -606,7 +606,7 @@ cmsFloat64Number EvalParametric5(cmsInt32Number Type, const cmsFloat64Number Par
         e = Params[1]*R + Params[2];
 
         if (e > 0)
-            Val = pow(e, Params[0]) + Params[5];
+            Val = _cmsPow(e, Params[0]) + Params[5];
         else
             Val = Params[5];
     }
@@ -640,7 +640,7 @@ cmsFloat64Number EvalParametric5Inverse(cmsInt32Number Type, const cmsFloat64Num
 
                 Val = 0;
             else
-                Val = (pow(e, 1.0 / Params[0]) - Params[2]) / Params[1];
+                Val = (_cmsPow(e, 1.0 / Params[0]) - Params[2]) / Params[1];
         }
     }
     else {
@@ -675,7 +675,7 @@ cmsFloat64Number EvalParametric6(cmsInt32Number Type, const cmsFloat64Number Par
         if (e < 0)
             Val = Params[3];
         else
-            Val = pow(e, Params[0]) + Params[3];
+            Val = _cmsPow(e, Params[0]) + Params[3];
     }
 
     return Val;
@@ -701,7 +701,7 @@ cmsFloat64Number EvalParametric6Inverse(cmsInt32Number Type, const cmsFloat64Num
         if (e < 0)
             Val = 0;
         else
-            Val = (pow(e, 1.0 / Params[0]) - Params[2]) / Params[1];
+            Val = (_cmsPow(e, 1.0 / Params[0]) - Params[2]) / Params[1];
     }
 
     return Val;
@@ -716,7 +716,7 @@ cmsFloat64Number EvalParametric7(cmsInt32Number Type, const cmsFloat64Number Par
 
     cmsUNUSED_PARAMETER(Type);
 
-     e = Params[2] * pow(R, Params[0]) + Params[3];
+     e = Params[2] * _cmsPow(R, Params[0]) + Params[3];
     if (e <= 0)
         Val = Params[4];
     else
@@ -744,7 +744,7 @@ cmsFloat64Number EvalParametric7Inverse(cmsInt32Number Type, const cmsFloat64Num
     }
     else
     {
-        Val = pow((pow(10.0, (R - Params[4]) / Params[1]) - Params[3]) / Params[2], 1.0 / Params[0]);
+        Val = _cmsPow((_cmsPow(10.0, (R - Params[4]) / Params[1]) - Params[3]) / Params[2], 1.0 / Params[0]);
     }
 
     return Val;
@@ -759,7 +759,7 @@ cmsFloat64Number EvalParametric8(cmsInt32Number Type, const cmsFloat64Number Par
 
     cmsUNUSED_PARAMETER(Type);
 
-    Val = (Params[0] * pow(Params[1], Params[2] * R + Params[3]) + Params[4]);
+    Val = (Params[0] * _cmsPow(Params[1], Params[2] * R + Params[3]) + Params[4]);
 
     return Val;
 }
@@ -804,7 +804,7 @@ cmsFloat64Number EvalParametric108(cmsInt32Number Type, const cmsFloat64Number P
     if (fabs(Params[0]) < MATRIX_DET_TOLERANCE)
         Val = 0;
     else
-        Val = pow(1.0 - pow(1 - R, 1/Params[0]), 1/Params[0]);
+        Val = _cmsPow(1.0 - _cmsPow(1 - R, 1/Params[0]), 1/Params[0]);
 
     return Val;
 }
@@ -822,7 +822,7 @@ cmsFloat64Number EvalParametric108Inverse(cmsInt32Number Type, const cmsFloat64N
 
     cmsUNUSED_PARAMETER(Type);
 
-    Val = 1 - pow(1 - pow(R, Params[0]), Params[0]);
+    Val = 1 - _cmsPow(1 - _cmsPow(R, Params[0]), Params[0]);
 
     return Val;
 }

@@ -18,6 +18,7 @@ icctrans.c
 ../../src/cmsopt.c
 ../../src/cmspack.c
 ../../src/cmspcs.c
+../../src/cmspow.c
 ../../src/cmsplugin.c
 ../../src/cmsps2.c
 ../../src/cmssamp.c

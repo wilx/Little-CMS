@@ -93,7 +93,7 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-check_PROGRAMS = testcms$(EXEEXT)
+check_PROGRAMS = testcms$(EXEEXT) testpow$(EXEEXT)
 subdir = testbed
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/ax_append_compile_flags.m4 \
@@ -122,6 +122,11 @@ am__v_lt_1 =
 testcms_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
 	$(testcms_LDFLAGS) $(LDFLAGS) -o $@
+am__dirstamp = $(am__leading_dot)dirstamp
+am_testpow_OBJECTS = testpow.$(OBJEXT) ../src/cmspow.$(OBJEXT)
+testpow_OBJECTS = $(am_testpow_OBJECTS)
+am__DEPENDENCIES_1 =
+testpow_DEPENDENCIES = $(am__DEPENDENCIES_1)
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
 am__v_P_0 = false
@@ -137,8 +142,9 @@ am__v_at_1 =
 DEFAULT_INCLUDES = -I.@am__isrc@
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__maybe_remake_depfiles = depfiles
-am__depfiles_remade = ./$(DEPDIR)/testcms2.Po \
-	./$(DEPDIR)/testplugin.Po ./$(DEPDIR)/zoo_icc.Po
+am__depfiles_remade = ../src/$(DEPDIR)/cmspow.Po \
+	./$(DEPDIR)/testcms2.Po ./$(DEPDIR)/testplugin.Po \
+	./$(DEPDIR)/testpow.Po ./$(DEPDIR)/zoo_icc.Po
 am__mv = mv -f
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
@@ -158,8 +164,8 @@ AM_V_CCLD = $(am__v_CCLD_@AM_V@)
 am__v_CCLD_ = $(am__v_CCLD_@AM_DEFAULT_V@)
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
-SOURCES = $(testcms_SOURCES)
-DIST_SOURCES = $(testcms_SOURCES)
+SOURCES = $(testcms_SOURCES) $(testpow_SOURCES)
+DIST_SOURCES = $(testcms_SOURCES) $(testpow_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -345,6 +351,8 @@ AM_CPPFLAGS = -I$(top_builddir)/include -I$(top_srcdir)/include -I$(top_srcdir)/
 testcms_LDADD = $(top_builddir)/src/liblcms2.la 
 testcms_LDFLAGS = -static @LDFLAGS@
 testcms_SOURCES = testcms2.c testplugin.c zoo_icc.c testcms2.h
+testpow_SOURCES = testpow.c ../src/cmspow.c
+testpow_LDADD = $(LCMS_LIB_DEPLIBS)
 EXTRA_DIST = test1.icc bad.icc toosmall.icc test2.icc \
              test3.icc test4.icc \
              test5.icc ibm-t61.icc crayons.icc bad_mpe.icc 
@@ -390,15 +398,30 @@ clean-checkPROGRAMS:
 testcms$(EXEEXT): $(testcms_OBJECTS) $(testcms_DEPENDENCIES) $(EXTRA_testcms_DEPENDENCIES) 
 	@rm -f testcms$(EXEEXT)
 	$(AM_V_CCLD)$(testcms_LINK) $(testcms_OBJECTS) $(testcms_LDADD) $(LIBS)
+../src/$(am__dirstamp):
+	@$(MKDIR_P) ../src
+	@: >>../src/$(am__dirstamp)
+../src/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) ../src/$(DEPDIR)
+	@: >>../src/$(DEPDIR)/$(am__dirstamp)
+../src/cmspow.$(OBJEXT): ../src/$(am__dirstamp) \
+	../src/$(DEPDIR)/$(am__dirstamp)
+
+testpow$(EXEEXT): $(testpow_OBJECTS) $(testpow_DEPENDENCIES) $(EXTRA_testpow_DEPENDENCIES)
+	@rm -f testpow$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(testpow_OBJECTS) $(testpow_LDADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
+	-rm -f ../src/*.$(OBJEXT)
 
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@../src/$(DEPDIR)/cmspow.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/testcms2.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/testplugin.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/testpow.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/zoo_icc.Po@am__quote@ # am--include-marker
 
 $(am__depfiles_remade):
@@ -553,6 +576,8 @@ clean-generic:
 distclean-generic:
 	-$(am__rm_f) $(CONFIG_CLEAN_FILES)
 	-test . = "$(srcdir)" || $(am__rm_f) $(CONFIG_CLEAN_VPATH_FILES)
+	-$(am__rm_f) ../src/$(DEPDIR)/$(am__dirstamp)
+	-$(am__rm_f) ../src/$(am__dirstamp)
 
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
@@ -563,8 +588,10 @@ clean-am: clean-checkPROGRAMS clean-generic clean-libtool \
 	mostlyclean-am
 
 distclean: distclean-am
+	-rm -f ../src/$(DEPDIR)/cmspow.Po
 	-rm -f ./$(DEPDIR)/testcms2.Po
 	-rm -f ./$(DEPDIR)/testplugin.Po
+	-rm -f ./$(DEPDIR)/testpow.Po
 	-rm -f ./$(DEPDIR)/zoo_icc.Po
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
@@ -611,8 +638,10 @@ install-ps-am:
 installcheck-am:
 
 maintainer-clean: maintainer-clean-am
+	-rm -f ../src/$(DEPDIR)/cmspow.Po
 	-rm -f ./$(DEPDIR)/testcms2.Po
 	-rm -f ./$(DEPDIR)/testplugin.Po
+	-rm -f ./$(DEPDIR)/testpow.Po
 	-rm -f ./$(DEPDIR)/zoo_icc.Po
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
@@ -656,6 +685,7 @@ check:
 		cp $(top_srcdir)/testbed/*.ic? $(top_builddir)/testbed; \
 	fi
 	LD_LIBRARY_PATH=$(top_builddir)/src/.libs ./testcms
+	./testpow
 	if [ $(top_srcdir) != $(top_builddir) ]; then \
 		rm -f $(top_builddir)/testbed/*.ic?; \
 	fi

@@ -123,7 +123,7 @@ cmsFloat64Number f(cmsFloat64Number t)
     if (t <= Limit)
         return (841.0/108.0) * t + (16.0/116.0);
     else
-        return pow(t, 1.0/3.0);
+        return _cmsPow(t, 1.0/3.0);
 }
 
 static
@@ -349,7 +349,7 @@ cmsFloat64Number Sqr(cmsFloat64Number v)
 void CMSEXPORT cmsLab2LCh(cmsCIELCh* LCh, const cmsCIELab* Lab)
 {
     LCh -> L = Lab -> L;
-    LCh -> C = pow(Sqr(Lab ->a) + Sqr(Lab ->b), 0.5);
+    LCh -> C = _cmsPow(Sqr(Lab ->a) + Sqr(Lab ->b), 0.5);
     LCh -> h = atan2deg(Lab ->b, Lab ->a);
 }
 
@@ -443,7 +443,7 @@ cmsFloat64Number CMSEXPORT cmsDeltaE(const cmsCIELab* Lab1, const cmsCIELab* Lab
     da = fabs(Lab1 -> a - Lab2 -> a);
     db = fabs(Lab1 -> b - Lab2 -> b);
 
-    return pow(Sqr(dL) + Sqr(da) + Sqr(db), 0.5);
+    return _cmsPow(Sqr(dL) + Sqr(da) + Sqr(db), 0.5);
 }
 
 
@@ -466,7 +466,7 @@ cmsFloat64Number CMSEXPORT cmsCIE94DeltaE(const cmsCIELab* Lab1, const cmsCIELab
     if (dhsq < 0)
         dh = 0;
     else
-        dh = pow(dhsq, 0.5);
+        dh = _cmsPow(dhsq, 0.5);
 
     c12 = sqrt(LCh1.C * LCh2.C);
 
@@ -599,7 +599,7 @@ cmsFloat64Number CMSEXPORT cmsCIE2000DeltaE(const cmsCIELab* Lab1, const cmsCIEL
     cmsFloat64Number bs = Lab2 ->b;
     cmsFloat64Number Cs = sqrt( Sqr(as) + Sqr(bs) );
 
-    cmsFloat64Number G = 0.5 * ( 1 - sqrt(pow((C + Cs) / 2 , 7.0) / (pow((C + Cs) / 2, 7.0) + pow(25.0, 7.0) ) ));
+    cmsFloat64Number G = 0.5 * ( 1 - sqrt(_cmsPow((C + Cs) / 2 , 7.0) / (_cmsPow((C + Cs) / 2, 7.0) + _cmsPow(25.0, 7.0) ) ));
 
     cmsFloat64Number a_p = (1 + G ) * a1;
     cmsFloat64Number b_p = b1;
@@ -642,7 +642,7 @@ cmsFloat64Number CMSEXPORT cmsCIE2000DeltaE(const cmsCIELab* Lab1, const cmsCIEL
 
     cmsFloat64Number delta_ro = 30 * exp( -Sqr(((meanh_p - 275 ) / 25)));
 
-    cmsFloat64Number Rc = 2 * sqrt(( pow(meanC_p, 7.0) )/( pow(meanC_p, 7.0) + pow(25.0, 7.0)));
+    cmsFloat64Number Rc = 2 * sqrt(( _cmsPow(meanC_p, 7.0) )/( _cmsPow(meanC_p, 7.0) + _cmsPow(25.0, 7.0)));
 
     cmsFloat64Number Rt = -sin(2 * RADIANS(delta_ro)) * Rc;
 

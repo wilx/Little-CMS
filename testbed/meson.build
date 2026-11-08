@@ -29,3 +29,13 @@ test(
   workdir: meson.current_build_dir(),
   timeout: 600,
 )
+
+# Compile the private helper directly; it is deliberately not exported by LCMS.
+testpow = executable(
+  'testpow',
+  ['testpow.c', '../src/cmspow.c'],
+  include_directories: [inc_dirs, include_directories('../src')],
+  dependencies: m_dep,
+  c_args: cargs,
+)
+test('testpow', testpow)
