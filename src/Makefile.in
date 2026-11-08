@@ -143,10 +143,10 @@ am__DEPENDENCIES_1 =
 liblcms2_la_DEPENDENCIES = $(am__DEPENDENCIES_1)
 am_liblcms2_la_OBJECTS = cmscnvrt.lo cmserr.lo cmsgamma.lo cmsgmt.lo \
 	cmsintrp.lo cmsio0.lo cmsio1.lo cmslut.lo cmsplugin.lo \
-	cmssm.lo cmsmd5.lo cmsmtrx.lo cmspack.lo cmspcs.lo cmswtpnt.lo \
-	cmsxform.lo cmssamp.lo cmsnamed.lo cmscam02.lo cmsvirt.lo \
-	cmstypes.lo cmscgats.lo cmsps2.lo cmsopt.lo cmshalf.lo \
-	cmsalpha.lo
+	cmssm.lo cmsmd5.lo cmsmtrx.lo cmspack.lo cmspcs.lo cmspow.lo \
+	cmswtpnt.lo cmsxform.lo cmssamp.lo cmsnamed.lo cmscam02.lo \
+	cmsvirt.lo cmstypes.lo cmscgats.lo cmsps2.lo cmsopt.lo \
+	cmshalf.lo cmsalpha.lo
 liblcms2_la_OBJECTS = $(am_liblcms2_la_OBJECTS)
 AM_V_lt = $(am__v_lt_@AM_V@)
 am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
@@ -180,10 +180,10 @@ am__depfiles_remade = ./$(DEPDIR)/cmsalpha.Plo \
 	./$(DEPDIR)/cmsmtrx.Plo ./$(DEPDIR)/cmsnamed.Plo \
 	./$(DEPDIR)/cmsopt.Plo ./$(DEPDIR)/cmspack.Plo \
 	./$(DEPDIR)/cmspcs.Plo ./$(DEPDIR)/cmsplugin.Plo \
-	./$(DEPDIR)/cmsps2.Plo ./$(DEPDIR)/cmssamp.Plo \
-	./$(DEPDIR)/cmssm.Plo ./$(DEPDIR)/cmstypes.Plo \
-	./$(DEPDIR)/cmsvirt.Plo ./$(DEPDIR)/cmswtpnt.Plo \
-	./$(DEPDIR)/cmsxform.Plo
+	./$(DEPDIR)/cmspow.Plo ./$(DEPDIR)/cmsps2.Plo \
+	./$(DEPDIR)/cmssamp.Plo ./$(DEPDIR)/cmssm.Plo \
+	./$(DEPDIR)/cmstypes.Plo ./$(DEPDIR)/cmsvirt.Plo \
+	./$(DEPDIR)/cmswtpnt.Plo ./$(DEPDIR)/cmsxform.Plo
 am__mv = mv -f
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
@@ -392,9 +392,12 @@ liblcms2_la_LDFLAGS = -no-undefined \
 liblcms2_la_LIBADD = $(LCMS_LIB_DEPLIBS)
 liblcms2_la_SOURCES = \
   cmscnvrt.c cmserr.c cmsgamma.c cmsgmt.c cmsintrp.c cmsio0.c cmsio1.c cmslut.c \
-  cmsplugin.c cmssm.c cmsmd5.c cmsmtrx.c cmspack.c cmspcs.c cmswtpnt.c cmsxform.c \
+  cmsplugin.c cmssm.c cmsmd5.c cmsmtrx.c cmspack.c cmspcs.c cmspow.c cmswtpnt.c cmsxform.c \
   cmssamp.c cmsnamed.c cmscam02.c cmsvirt.c cmstypes.c cmscgats.c cmsps2.c cmsopt.c \
   cmshalf.c cmsalpha.c lcms2_internal.h
+
+EXTRA_DIST = fastpow/LICENSE fastpow/README.txt fastpow/config.h \
+             fastpow/exp_data.h fastpow/log_data.h
 
 all: all-am
 
@@ -491,6 +494,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmspack.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmspcs.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmsplugin.Plo@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmspow.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmsps2.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmssamp.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmssm.Plo@am__quote@ # am--include-marker
@@ -682,6 +686,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/cmspack.Plo
 	-rm -f ./$(DEPDIR)/cmspcs.Plo
 	-rm -f ./$(DEPDIR)/cmsplugin.Plo
+	-rm -f ./$(DEPDIR)/cmspow.Plo
 	-rm -f ./$(DEPDIR)/cmsps2.Plo
 	-rm -f ./$(DEPDIR)/cmssamp.Plo
 	-rm -f ./$(DEPDIR)/cmssm.Plo
@@ -753,6 +758,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/cmspack.Plo
 	-rm -f ./$(DEPDIR)/cmspcs.Plo
 	-rm -f ./$(DEPDIR)/cmsplugin.Plo
+	-rm -f ./$(DEPDIR)/cmspow.Plo
 	-rm -f ./$(DEPDIR)/cmsps2.Plo
 	-rm -f ./$(DEPDIR)/cmssamp.Plo
 	-rm -f ./$(DEPDIR)/cmssm.Plo

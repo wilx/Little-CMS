@@ -17,6 +17,7 @@ lcms2_srcs = files(
   'cmsopt.c',
   'cmspack.c',
   'cmspcs.c',
+  'cmspow.c',
   'cmsplugin.c',
   'cmsps2.c',
   'cmssamp.c',

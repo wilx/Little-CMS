@@ -638,7 +638,7 @@ SYMBOL BinSrchKey(const char *id, int NumKeys, const KEYWORD* TabKeys)
 static
 cmsFloat64Number xpow10(int n)
 {
-    return pow(10, (cmsFloat64Number) n);
+    return _cmsPow(10, (cmsFloat64Number) n);
 }
 
 

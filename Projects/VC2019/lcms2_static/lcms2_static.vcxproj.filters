@@ -63,6 +63,9 @@
     <ClCompile Include="..\..\..\src\cmspcs.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\src\cmspow.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\..\src\cmsplugin.c">
       <Filter>Source Files</Filter>
     </ClCompile>

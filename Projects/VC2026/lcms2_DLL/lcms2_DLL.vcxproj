@@ -319,6 +319,7 @@
     <ClCompile Include="..\..\..\src\cmsopt.c" />
     <ClCompile Include="..\..\..\src\cmspack.c" />
     <ClCompile Include="..\..\..\src\cmspcs.c" />
+    <ClCompile Include="..\..\..\src\cmspow.c" />
     <ClCompile Include="..\..\..\src\cmsplugin.c" />
     <ClCompile Include="..\..\..\src\cmsps2.c" />
     <ClCompile Include="..\..\..\src\cmssamp.c" />

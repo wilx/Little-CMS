@@ -85,6 +85,13 @@ function(lcms2_add_tests)
 
   add_test(NAME lcms2.testcms COMMAND "${_testbed_bin_dir}/testcms")
   set_tests_properties(lcms2.testcms PROPERTIES WORKING_DIRECTORY "${_testbed_bin_dir}")
+
+  # Exercise the private evaluator without adding a shared-library export.
+  add_executable(testpow "${PROJECT_SOURCE_DIR}/testbed/testpow.c"
+                         "${PROJECT_SOURCE_DIR}/src/cmspow.c")
+  target_include_directories(testpow PRIVATE "${PROJECT_SOURCE_DIR}/src")
+  _lcms2_apply_common_settings(testpow)
+  add_test(NAME lcms2.testpow COMMAND testpow)
 endfunction()
 
 
