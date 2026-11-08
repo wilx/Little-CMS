@@ -978,35 +978,34 @@ cmsInt32Number CMSEXPORT cmsSliceSpaceFloat(cmsUInt32Number nInputs, const cmsUI
 // ********************************************************************************
 
 
-static
-void EvaluateLab2XYZ(const cmsFloat32Number In[],
-                     cmsFloat32Number Out[],
-                     const cmsStage *mpe)
+static cmsFloat64Number Lab2XYZInverse(cmsFloat64Number t)
 {
-    cmsCIELab Lab;
-    cmsCIEXYZ XYZ;
-    const cmsFloat64Number XYZadj = MAX_ENCODEABLE_XYZ;
-
-    // V4 rules
-    Lab.L = In[0] * 100.0;
-    Lab.a = In[1] * 255.0 - 128.0;
-    Lab.b = In[2] * 255.0 - 128.0;
-
-    cmsLab2XYZ(NULL, &XYZ, &Lab);
-
-    // From XYZ, range 0..19997 to 0..1.0, note that 1.99997 comes from 0xffff
-    // encoded as 1.15 fixed point, so 1 + (32767.0 / 32768.0)
-
-    Out[0] = (cmsFloat32Number) ((cmsFloat64Number) XYZ.X / XYZadj);
-    Out[1] = (cmsFloat32Number) ((cmsFloat64Number) XYZ.Y / XYZadj);
-    Out[2] = (cmsFloat32Number) ((cmsFloat64Number) XYZ.Z / XYZadj);
-    return;
-
-    cmsUNUSED_PARAMETER(mpe);
+    if (t <= 24.0 / 116.0)
+        return (108.0 / 841.0) * (t - 16.0 / 116.0);
+    return t * t * t;
 }
 
+static void EvaluateLab2XYZ(const cmsFloat32Number In[], cmsFloat32Number Out[], const cmsStage* mpe)
+{
+    // This PCS conversion always uses D50. Inline cmsLab2XYZ(NULL, ...) here
+    // to avoid per-pixel calls and temporary Lab/XYZ structs. Keep the double
+    // arithmetic and Lab2XYZInverse consistent with cmsLab2XYZ in cmspcs.c;
+    // round to float only after XYZ scaling.
+    cmsFloat64Number L = In[0] * 100.0;
+    cmsFloat64Number a = In[1] * 255.0 - 128.0;
+    cmsFloat64Number b = In[2] * 255.0 - 128.0;
+    cmsFloat64Number y = (L + 16.0) / 116.0;
+    cmsFloat64Number x = y + 0.002 * a;
+    cmsFloat64Number z = y - 0.005 * b;
+    cmsFloat64Number X = Lab2XYZInverse(x) * cmsD50X;
+    cmsFloat64Number Y = Lab2XYZInverse(y) * cmsD50Y;
+    cmsFloat64Number Z = Lab2XYZInverse(z) * cmsD50Z;
+    cmsUNUSED_PARAMETER(mpe);
+    Out[0] = (cmsFloat32Number) (X / MAX_ENCODEABLE_XYZ);
+    Out[1] = (cmsFloat32Number) (Y / MAX_ENCODEABLE_XYZ);
+    Out[2] = (cmsFloat32Number) (Z / MAX_ENCODEABLE_XYZ);
+}
 
-// No dup or free routines needed, as the structure has no pointers in it.
 cmsStage* CMSEXPORT _cmsStageAllocLab2XYZ(cmsContext ContextID)
 {
     return _cmsStageAllocPlaceholder(ContextID, cmsSigLab2XYZElemType, 3, 3, EvaluateLab2XYZ, NULL, NULL, NULL);
