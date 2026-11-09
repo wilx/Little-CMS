@@ -252,6 +252,30 @@ void CMSEXPORT cmsDoTransformLineStride(cmsHTRANSFORM  Transform,
 
 // Transform routines ----------------------------------------------------------------------------------------------------------
 
+// Blocks share traversal and callback setup while retaining float stage boundaries.
+// Convert each scanline in bounded blocks, preserving extra channels and handling a short final block.
+static void FloatXFORMBatch(_cmsTRANSFORM* p, const void* in, void* out,
+                           cmsUInt32Number PixelsPerLine, cmsUInt32Number LineCount, const cmsStride* Stride)
+{
+    cmsFloat32Number Storage[2][CMS_BATCH_SIZE * MAX_STAGE_CHANNELS];
+    cmsUInt32Number Line, Pixel, Count, i;
+    _cmsHandleExtraChannels(p, in, out, PixelsPerLine, LineCount, Stride);
+    for (Line = 0; Line < LineCount; ++Line) {
+        cmsUInt8Number* From = (cmsUInt8Number*)in + (size_t)Line * Stride->BytesPerLineIn;
+        cmsUInt8Number* To = (cmsUInt8Number*)out + (size_t)Line * Stride->BytesPerLineOut;
+        for (Pixel = 0; Pixel < PixelsPerLine; Pixel += Count) {
+            cmsFloat32Number* Result;
+            Count = PixelsPerLine - Pixel;
+            if (Count > CMS_BATCH_SIZE) Count = CMS_BATCH_SIZE;
+            for (i = 0; i < Count; ++i)
+                From = p->FromInputFloat(p, Storage[0] + i * MAX_STAGE_CHANNELS, From, Stride->BytesPerPlaneIn);
+            Result = _cmsPipelineEvalBatch(p->Lut, Storage[0], Storage[1], MAX_STAGE_CHANNELS, Count);
+            for (i = 0; i < Count; ++i)
+                To = p->ToOutputFloat(p, Result + i * MAX_STAGE_CHANNELS, To, Stride->BytesPerPlaneOut);
+        }
+    }
+}
+
 // Float xform converts floats. Since there are no performance issues, one routine does all job, including gamut check.
 // Note that because extended range, we can use a -1.0 value for out of gamut in this case.
 static
@@ -267,6 +291,12 @@ void FloatXFORM(_cmsTRANSFORM* p,
     cmsFloat32Number fIn[cmsMAXCHANNELS], fOut[cmsMAXCHANNELS];
     cmsFloat32Number OutOfGamut;
     size_t i, j, c, strideIn, strideOut;
+
+    if (PixelsPerLine > 1 && p->GamutCheck == NULL &&
+        _cmsHasStockFloatFormatters(p) && _cmsCanBatchPipeline(p->Lut)) {
+        FloatXFORMBatch(p, in, out, PixelsPerLine, LineCount, Stride);
+        return;
+    }
 
     _cmsHandleExtraChannels(p, in, out, PixelsPerLine, LineCount, Stride);
 
