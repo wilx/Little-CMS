@@ -121,6 +121,41 @@ cmsINLINE cmsFloat64Number _cmsPow(cmsFloat64Number x, cmsFloat64Number y)
     return _cmsPowCore(x, y);
 }
 
+// Shared Lab-to-XYZ arithmetic, visible to callers of the D50 specialization.
+// Undo the piecewise Lab transfer function before scaling by a white-point component.
+cmsINLINE cmsFloat64Number _cmsLab2XYZInverse(cmsFloat64Number t)
+{
+    const cmsFloat64Number Limit = (24.0/116.0);
+
+    if (t <= Limit)
+        return (108.0/841.0) * (t - (16.0/116.0));
+
+    return t * t * t;
+}
+
+// Convert Lab to XYZ using the supplied non-NULL white point and shared piecewise arithmetic.
+cmsINLINE void _cmsLab2XYZWithWhitePoint(const cmsCIEXYZ* WhitePoint,
+                                      cmsCIEXYZ* xyz, const cmsCIELab* Lab)
+{
+    cmsFloat64Number x, y, z;
+
+    y = (Lab->L + 16.0) / 116.0;
+    x = y + 0.002 * Lab->a;
+    z = y - 0.005 * Lab->b;
+
+    xyz->X = _cmsLab2XYZInverse(x) * WhitePoint->X;
+    xyz->Y = _cmsLab2XYZInverse(y) * WhitePoint->Y;
+    xyz->Z = _cmsLab2XYZInverse(z) * WhitePoint->Z;
+}
+
+// Equivalent to cmsLab2XYZ(NULL, ...), with D50 constants available for inlining.
+cmsINLINE void _cmsLab2XYZD50(cmsCIEXYZ* xyz, const cmsCIELab* Lab)
+{
+    static const cmsCIEXYZ WhitePoint = { cmsD50X, cmsD50Y, cmsD50Z };
+
+    _cmsLab2XYZWithWhitePoint(&WhitePoint, xyz, Lab);
+}
+
 // Other replacement functions
 #ifdef _MSC_VER
 # ifndef snprintf
