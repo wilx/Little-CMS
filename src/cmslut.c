@@ -27,6 +27,9 @@
 #include "lcms2_internal.h"
 
 
+// Map each supported stock stage callback to its batch evaluator; return NULL for custom stages.
+static _cmsStageEvalBatchFn GetStageBatchEvaluator(_cmsStageEvalFn Scalar);
+
 // Allocates an empty multi profile element
 cmsStage* CMSEXPORT _cmsStageAllocPlaceholder(cmsContext ContextID,
                                 cmsStageSignature Type,
@@ -50,6 +53,7 @@ cmsStage* CMSEXPORT _cmsStageAllocPlaceholder(cmsContext ContextID,
     ph ->InputChannels  = InputChannels;
     ph ->OutputChannels = OutputChannels;
     ph ->EvalPtr        = EvalPtr;
+    ph ->EvalBatch      = GetStageBatchEvaluator(EvalPtr);
     ph ->DupElemPtr     = DupElemPtr;
     ph ->FreePtr        = FreePtr;
     ph ->Data           = Data;
@@ -1888,3 +1892,151 @@ cmsBool CMSEXPORT cmsPipelineEvalReverseFloat(cmsFloat32Number Target[],
 }
 
 
+
+// Stock scalar formulas remain the single source of arithmetic for batch loops.
+// Inlining can change which NaN payload wins when several operands are NaNs.
+// Keep non-finite samples/coefficients on the original scalar callback.
+// Check all matrix coefficients and optional offsets before using the inlined batch formula.
+static cmsBool MatrixBatchFinite(const cmsStage* Stage)
+{
+    const _cmsStageMatrixData* Data = (const _cmsStageMatrixData*)Stage->Data;
+    cmsUInt32Number i;
+    for (i = 0; i < Stage->InputChannels * Stage->OutputChannels; ++i)
+        if (!isfinite(Data->Double[i])) return FALSE;
+    if (Data->Offset != NULL)
+        for (i = 0; i < Stage->OutputChannels; ++i)
+            if (!isfinite(Data->Offset[i])) return FALSE;
+    return TRUE;
+}
+
+// Generate NameBatch for one stock stage formula; input and output strides count float elements.
+#define DEFINE_STAGE_BATCH(Name, Matrix) \
+static void Name##Batch(const cmsFloat32Number* In, cmsUInt32Number InStride, \
+    cmsFloat32Number* Out, cmsUInt32Number OutStride, cmsUInt32Number Count, const cmsStage* Stage) \
+{ \
+    cmsUInt32Number i, c; \
+    cmsBool ParametersFinite = !(Matrix) || MatrixBatchFinite(Stage); \
+    for (i = 0; i < Count; ++i) { \
+        const cmsFloat32Number* Pixel = In + (size_t)i * InStride; \
+        cmsBool Finite = ParametersFinite; \
+        for (c = 0; Finite && c < Stage->InputChannels; ++c) \
+            if (!isfinite(Pixel[c])) Finite = FALSE; \
+        if (Finite) Name(Pixel, Out + (size_t)i * OutStride, Stage); \
+        else Stage->EvalPtr(Pixel, Out + (size_t)i * OutStride, Stage); \
+    } \
+}
+DEFINE_STAGE_BATCH(EvaluateIdentity, FALSE)
+DEFINE_STAGE_BATCH(EvaluateLab2XYZ, FALSE)
+DEFINE_STAGE_BATCH(EvaluateXYZ2Lab, FALSE)
+DEFINE_STAGE_BATCH(Clipper, FALSE)
+DEFINE_STAGE_BATCH(EvaluateCLUTfloat, FALSE)
+DEFINE_STAGE_BATCH(EvaluateCLUTfloatIn16, FALSE)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_1_1, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_1_3, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_1_4, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_3_1, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_3_3, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_3_4, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_4_1, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_4_3, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_4_4, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_1_1, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_1_3, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_1_4, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_3_1, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_3_3, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_3_4, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_4_1, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_4_3, TRUE)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_4_4, TRUE)
+#undef DEFINE_STAGE_BATCH
+
+// Apply each channel curve to its strided samples across the block; strides count float elements.
+static void EvaluateCurvesBatch(const cmsFloat32Number* In, cmsUInt32Number InStride,
+    cmsFloat32Number* Out, cmsUInt32Number OutStride, cmsUInt32Number Count, const cmsStage* Stage)
+{
+    const _cmsStageToneCurvesData* Data = (const _cmsStageToneCurvesData*)Stage->Data;
+    cmsUInt32Number c;
+    for (c = 0; c < Data->nCurves; ++c)
+        Data->TheCurves[c]->EvalBatch(Data->TheCurves[c], In + c, InStride, Out + c, OutStride, Count);
+}
+
+// Map each supported stock stage callback to its batch evaluator; return NULL for custom stages.
+static _cmsStageEvalBatchFn GetStageBatchEvaluator(_cmsStageEvalFn Scalar)
+{
+#define SELECT_STAGE_BATCH(Name) if (Scalar == Name) return Name##Batch;
+    SELECT_STAGE_BATCH(EvaluateIdentity)
+    SELECT_STAGE_BATCH(EvaluateLab2XYZ)
+    SELECT_STAGE_BATCH(EvaluateXYZ2Lab)
+    SELECT_STAGE_BATCH(Clipper)
+    SELECT_STAGE_BATCH(EvaluateCLUTfloat)
+    SELECT_STAGE_BATCH(EvaluateCLUTfloatIn16)
+    SELECT_STAGE_BATCH(EvaluateMatrixWithOffset)
+    SELECT_STAGE_BATCH(EvaluateMatrixWithOffset_1_1)
+    SELECT_STAGE_BATCH(EvaluateMatrixWithOffset_1_3)
+    SELECT_STAGE_BATCH(EvaluateMatrixWithOffset_1_4)
+    SELECT_STAGE_BATCH(EvaluateMatrixWithOffset_3_1)
+    SELECT_STAGE_BATCH(EvaluateMatrixWithOffset_3_3)
+    SELECT_STAGE_BATCH(EvaluateMatrixWithOffset_3_4)
+    SELECT_STAGE_BATCH(EvaluateMatrixWithOffset_4_1)
+    SELECT_STAGE_BATCH(EvaluateMatrixWithOffset_4_3)
+    SELECT_STAGE_BATCH(EvaluateMatrixWithOffset_4_4)
+    SELECT_STAGE_BATCH(EvaluateMatrixNoOffset)
+    SELECT_STAGE_BATCH(EvaluateMatrixNoOffset_1_1)
+    SELECT_STAGE_BATCH(EvaluateMatrixNoOffset_1_3)
+    SELECT_STAGE_BATCH(EvaluateMatrixNoOffset_1_4)
+    SELECT_STAGE_BATCH(EvaluateMatrixNoOffset_3_1)
+    SELECT_STAGE_BATCH(EvaluateMatrixNoOffset_3_3)
+    SELECT_STAGE_BATCH(EvaluateMatrixNoOffset_3_4)
+    SELECT_STAGE_BATCH(EvaluateMatrixNoOffset_4_1)
+    SELECT_STAGE_BATCH(EvaluateMatrixNoOffset_4_3)
+    SELECT_STAGE_BATCH(EvaluateMatrixNoOffset_4_4)
+    SELECT_STAGE_BATCH(EvaluateCurves)
+#undef SELECT_STAGE_BATCH
+    return NULL;
+}
+
+// Check once per transform call, before reordering formatter or stage callbacks.
+// Duplication can reselect nested curve/interpolation plugins, so inspect current data.
+// Validate channel continuity and all nested callbacks before allowing stage-wise batch execution.
+cmsBool _cmsCanBatchPipeline(const cmsPipeline* Lut)
+{
+    const cmsStage* Stage;
+    cmsUInt32Number Channels;
+    if (Lut == NULL || Lut->EvalFloatFn != _LUTevalFloat) return FALSE;
+    Channels = Lut->InputChannels;
+    for (Stage = Lut->Elements; Stage != NULL; Stage = Stage->Next) {
+        if (Stage->InputChannels != Channels || Stage->InputChannels > MAX_STAGE_CHANNELS ||
+            Stage->OutputChannels > MAX_STAGE_CHANNELS || Stage->EvalBatch == NULL ||
+            Stage->EvalBatch != GetStageBatchEvaluator(Stage->EvalPtr)) return FALSE;
+        if (Stage->EvalPtr == EvaluateCurves) {
+            const _cmsStageToneCurvesData* Data = (const _cmsStageToneCurvesData*)Stage->Data;
+            cmsUInt32Number c;
+            if (Data == NULL || Data->nCurves != Channels || Data->TheCurves == NULL) return FALSE;
+            for (c = 0; c < Data->nCurves; ++c)
+                if (!_cmsCanBatchCurve(Data->TheCurves[c])) return FALSE;
+        }
+        if (Stage->EvalPtr == EvaluateCLUTfloat || Stage->EvalPtr == EvaluateCLUTfloatIn16) {
+            const _cmsStageCLutData* Data = (const _cmsStageCLutData*)Stage->Data;
+            if (Data == NULL || !_cmsIsStockInterpolation(Data->Params)) return FALSE;
+        }
+        Channels = Stage->OutputChannels;
+    }
+    return Channels == Lut->OutputChannels && Channels <= MAX_STAGE_CHANNELS;
+}
+
+// Caller supplies disjoint buffers and has checked _cmsCanBatchPipeline.
+// Alternate disjoint input and scratch buffers through eligible stages; return the buffer holding the result.
+cmsFloat32Number* _cmsPipelineEvalBatch(const cmsPipeline* Lut, cmsFloat32Number* In,
+    cmsFloat32Number* Scratch, cmsUInt32Number Stride, cmsUInt32Number Count)
+{
+    const cmsStage* Stage;
+    for (Stage = Lut->Elements; Stage != NULL; Stage = Stage->Next) {
+        cmsFloat32Number* Swap;
+        Stage->EvalBatch(In, Stride, Scratch, Stride, Count, Stage);
+        Swap = In; In = Scratch; Scratch = Swap;
+    }
+    return In;
+}
