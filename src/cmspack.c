@@ -4064,3 +4064,9 @@ cmsUInt32Number CMSEXPORT cmsFormatterForPCSOfProfile(cmsHPROFILE hProfile, cmsU
     return FLOAT_SH(Float) | COLORSPACE_SH(ColorSpaceBits) | BYTES_SH(nBytes) | CHANNELS_SH(nOutputChans);
 }
 
+
+cmsBool _cmsHasStockFloatFormatters(const _cmsTRANSFORM* p)
+{
+    return p->FromInputFloat == _cmsGetStockInputFormatter(p->InputFormat, CMS_PACK_FLAGS_FLOAT).FmtFloat &&
+           p->ToOutputFloat == _cmsGetStockOutputFormatter(p->OutputFormat, CMS_PACK_FLAGS_FLOAT).FmtFloat;
+}

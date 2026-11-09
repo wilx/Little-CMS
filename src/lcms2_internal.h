@@ -950,6 +950,20 @@ cmsBool                                  _cmsSetInterpolationRoutine(cmsContext 
 // This struct holds information about a segment, plus a pointer to the function that implements the evaluation.
 // In the case of table-based, Eval pointer is set to NULL
 
+// Batch strides count float elements, not bytes. Count may include a short tail.
+#ifndef CMS_BATCH_SIZE
+#define CMS_BATCH_SIZE 16
+#endif
+#if CMS_BATCH_SIZE < 1 || CMS_BATCH_SIZE > 64
+#error CMS_BATCH_SIZE must be between 1 and 64
+#endif
+
+typedef void (*_cmsCurveEvalBatchFn)(const cmsToneCurve* Curve,
+    const cmsFloat32Number* In, cmsUInt32Number InStride,
+    cmsFloat32Number* Out, cmsUInt32Number OutStride, cmsUInt32Number Count);
+typedef void (*_cmsStageEvalBatchFn)(const cmsFloat32Number* In, cmsUInt32Number InStride,
+    cmsFloat32Number* Out, cmsUInt32Number OutStride, cmsUInt32Number Count, const cmsStage* Stage);
+
 // The gamma function main structure
 struct _cms_curve_struct {
 
@@ -965,6 +979,7 @@ struct _cms_curve_struct {
     cmsUInt32Number    nEntries;      // Number of table elements
     cmsUInt16Number*   Table16;       // The table itself.
     cmsCurveSegment*   OriginalSegments; // Public metadata; Segments may hold prepared values
+    _cmsCurveEvalBatchFn EvalBatch; // NULL for callbacks whose ordering must be preserved
 };
 
 
@@ -990,6 +1005,7 @@ struct _cmsStage_struct {
 
     // Maintains linked list (used internally)
     struct _cmsStage_struct* Next;
+    _cmsStageEvalBatchFn EvalBatch; // Optional built-in evaluator; nested callbacks are checked per call
 };
 
 
@@ -1228,6 +1244,21 @@ cmsBool   _cmsBuildRGB2XYZtransferMatrix(cmsMAT3* r, const cmsCIExyY* WhitePoint
 
 // thread-safe gettime
 cmsBool _cmsGetTime(struct tm* ptr_time);
+
+
+// Internal batching interfaces; no additions to the public/plugin ABI.
+#if defined(__GNUC__) || defined(__clang__)
+#define CMS_BATCH_PRIVATE __attribute__((visibility("hidden")))
+#else
+#define CMS_BATCH_PRIVATE
+#endif
+CMS_BATCH_PRIVATE cmsBool _cmsIsStockInterpolation(const cmsInterpParams* p);
+CMS_BATCH_PRIVATE cmsBool _cmsCanBatchCurve(const cmsToneCurve* Curve);
+CMS_BATCH_PRIVATE cmsBool _cmsCanBatchPipeline(const cmsPipeline* Lut);
+CMS_BATCH_PRIVATE cmsFloat32Number* _cmsPipelineEvalBatch(const cmsPipeline* Lut,
+    cmsFloat32Number* In, cmsFloat32Number* Scratch, cmsUInt32Number Stride, cmsUInt32Number Count);
+CMS_BATCH_PRIVATE cmsBool _cmsHasStockFloatFormatters(const _cmsTRANSFORM* p);
+#undef CMS_BATCH_PRIVATE
 
 #define _lcms_internal_H
 #endif

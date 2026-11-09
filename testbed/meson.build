@@ -39,3 +39,11 @@ testpow = executable(
   c_args: cargs,
 )
 test('testpow', testpow)
+
+testbatch = executable(
+  'testbatch', 'testbatch.c',
+  include_directories: [inc_dirs, include_directories('../src')],
+  dependencies: [liblcms2_dep, m_dep],
+  c_args: cargs,
+)
+test('testbatch', testbatch)
