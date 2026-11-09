@@ -137,7 +137,7 @@ cmsBool  BlackPointAsDarkerColorant(cmsHPROFILE    hInput,
     cmsDeleteTransform(xform);
 
     // Convert from Lab (which is now clipped) to XYZ.
-    cmsLab2XYZ(NULL, &BlackXYZ, &Lab);
+    _cmsLab2XYZD50(&BlackXYZ, &Lab);
 
     if (BlackPoint != NULL)
         *BlackPoint = BlackXYZ;
@@ -180,7 +180,7 @@ cmsBool BlackPointUsingPerceptualBlack(cmsCIEXYZ* BlackPoint, cmsHPROFILE hProfi
     cmsDeleteTransform(hRoundTrip);
 
     // Convert it to XYZ
-    cmsLab2XYZ(NULL, &BlackXYZ, &LabOut);
+    _cmsLab2XYZD50(&BlackXYZ, &LabOut);
 
     if (BlackPoint != NULL)
         *BlackPoint = BlackXYZ;
@@ -301,7 +301,7 @@ cmsBool CMSEXPORT cmsDetectBlackPoint(cmsCIEXYZ* BlackPoint, cmsHPROFILE hProfil
                 cmsXYZ2Lab(NULL, &Lab, &UntrustedBlackPoint);
                 Lab.a = Lab.b = 0;
                 if (Lab.L > 50) Lab.L = 50; // Clip to L* <= 50
-                cmsLab2XYZ(NULL, &TrustedBlackPoint, &Lab);
+                _cmsLab2XYZD50(&TrustedBlackPoint, &Lab);
 
                 if (BlackPoint != NULL)
                     *BlackPoint = TrustedBlackPoint;
@@ -537,7 +537,7 @@ cmsBool CMSEXPORT cmsDetectDestinationBlackPoint(cmsCIEXYZ* BlackPoint, cmsHPROF
         // using curve fitting.
         if (NearlyStraightMidrange) {
 
-            cmsLab2XYZ(NULL, BlackPoint, &InitialLab);
+            _cmsLab2XYZD50(BlackPoint, &InitialLab);
             cmsDeleteTransform(hRoundTrip);
             return TRUE;
         }
@@ -595,7 +595,7 @@ cmsBool CMSEXPORT cmsDetectDestinationBlackPoint(cmsCIEXYZ* BlackPoint, cmsHPROF
     Lab.a = InitialLab.a;
     Lab.b = InitialLab.b;
 
-    cmsLab2XYZ(NULL, BlackPoint, &Lab);
+    _cmsLab2XYZD50(BlackPoint, &Lab);
 
     cmsDeleteTransform(hRoundTrip);
     return TRUE;

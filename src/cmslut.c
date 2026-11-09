@@ -996,7 +996,7 @@ void EvaluateLab2XYZ(const cmsFloat32Number In[],
     Lab.a = In[1] * 255.0 - 128.0;
     Lab.b = In[2] * 255.0 - 128.0;
 
-    cmsLab2XYZ(NULL, &XYZ, &Lab);
+    _cmsLab2XYZD50(&XYZ, &Lab);
 
     // From XYZ, range 0..19997 to 0..1.0, note that 1.99997 comes from 0xffff
     // encoded as 1.15 fixed point, so 1 + (32767.0 / 32768.0)
