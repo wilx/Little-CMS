@@ -60,6 +60,7 @@ typedef struct _cmsParametricCurvesCollection_st {
 // Select the built-in evaluator when allocating a curve segment.
 static cmsParametricCurveEvaluator GetDefaultParametricEvaluator(cmsInt32Number Type);
 static cmsParametricCurveEvaluator GetPreparedParametricEvaluator(cmsInt32Number Type, const cmsFloat64Number Params[]);
+static _cmsCurveEvalBatchFn GetCurveBatchEvaluator(const cmsToneCurve* Curve);
 static cmsBool PrepareInverse5Segments(cmsContext ContextID, cmsToneCurve* Curve);
 
 // The built-in list
@@ -306,8 +307,10 @@ cmsToneCurve* AllocateToneCurveStruct(cmsContext ContextID, cmsUInt32Number nEnt
     if (!PrepareInverse5Segments(ContextID, p)) goto Error;
 
     p ->InterpParams = _cmsComputeInterpParams(ContextID, p ->nEntries, 1, 1, p->Table16, CMS_LERP_FLAGS_16BITS);
-    if (p->InterpParams != NULL)
+    if (p->InterpParams != NULL) {
+        p->EvalBatch = GetCurveBatchEvaluator(p);
         return p;
+    }
 
 Error:
     for (i=0; i < nSegments; i++) {
@@ -1751,3 +1754,116 @@ const cmsCurveSegment* CMSEXPORT cmsGetToneCurveSegment(cmsInt32Number n, const 
     return t->OriginalSegments + n;
 }
 
+
+// Single-segment wrappers retain domain and infinity handling from EvalSegmentedFn.
+// The named scalar evaluator is visible here so the compiler can inline its formula.
+#define DEFINE_CURVE_BATCH(Name) \
+static void Name##Batch(const cmsToneCurve* Curve, const cmsFloat32Number* In, cmsUInt32Number InStride, \
+                       cmsFloat32Number* Out, cmsUInt32Number OutStride, cmsUInt32Number Count) \
+{ \
+    const cmsCurveSegment* Segment = Curve->Segments; \
+    cmsUInt32Number i; \
+    for (i = 0; i < Count; ++i) { \
+        cmsFloat64Number R = In[(size_t)i * InStride], Value = MINUS_INF; \
+        if (R > Segment->x0 && R <= Segment->x1) { \
+            Value = Name(Segment->Type, Segment->Params, R); \
+            if (isinf(Value)) Value = PLUS_INF; \
+        } \
+        Out[(size_t)i * OutStride] = (cmsFloat32Number)Value; \
+    } \
+}
+DEFINE_CURVE_BATCH(EvalParametric1)
+DEFINE_CURVE_BATCH(EvalParametric1Inverse)
+DEFINE_CURVE_BATCH(EvalParametric2)
+DEFINE_CURVE_BATCH(EvalParametric2Inverse)
+DEFINE_CURVE_BATCH(EvalParametric3)
+DEFINE_CURVE_BATCH(EvalParametric3Inverse)
+DEFINE_CURVE_BATCH(EvalParametric4)
+DEFINE_CURVE_BATCH(EvalParametric4Inverse)
+DEFINE_CURVE_BATCH(EvalParametric5)
+DEFINE_CURVE_BATCH(EvalParametric5Inverse)
+DEFINE_CURVE_BATCH(EvalParametric6)
+DEFINE_CURVE_BATCH(EvalParametric6Inverse)
+DEFINE_CURVE_BATCH(EvalParametric7)
+DEFINE_CURVE_BATCH(EvalParametric7Inverse)
+DEFINE_CURVE_BATCH(EvalParametric8)
+DEFINE_CURVE_BATCH(EvalParametric8Inverse)
+DEFINE_CURVE_BATCH(EvalParametric108)
+DEFINE_CURVE_BATCH(EvalParametric108Inverse)
+DEFINE_CURVE_BATCH(EvalParametric109)
+DEFINE_CURVE_BATCH(EvalParametric109Inverse)
+DEFINE_CURVE_BATCH(EvalParametric5InverseValid)
+DEFINE_CURVE_BATCH(EvalParametric5InverseCached)
+#undef DEFINE_CURVE_BATCH
+
+static _cmsCurveEvalBatchFn GetParametricBatchEvaluator(cmsParametricCurveEvaluator Scalar)
+{
+#define SELECT_CURVE_BATCH(Name) if (Scalar == Name) return Name##Batch;
+    SELECT_CURVE_BATCH(EvalParametric1)
+    SELECT_CURVE_BATCH(EvalParametric1Inverse)
+    SELECT_CURVE_BATCH(EvalParametric2)
+    SELECT_CURVE_BATCH(EvalParametric2Inverse)
+    SELECT_CURVE_BATCH(EvalParametric3)
+    SELECT_CURVE_BATCH(EvalParametric3Inverse)
+    SELECT_CURVE_BATCH(EvalParametric4)
+    SELECT_CURVE_BATCH(EvalParametric4Inverse)
+    SELECT_CURVE_BATCH(EvalParametric5)
+    SELECT_CURVE_BATCH(EvalParametric5Inverse)
+    SELECT_CURVE_BATCH(EvalParametric6)
+    SELECT_CURVE_BATCH(EvalParametric6Inverse)
+    SELECT_CURVE_BATCH(EvalParametric7)
+    SELECT_CURVE_BATCH(EvalParametric7Inverse)
+    SELECT_CURVE_BATCH(EvalParametric8)
+    SELECT_CURVE_BATCH(EvalParametric8Inverse)
+    SELECT_CURVE_BATCH(EvalParametric108)
+    SELECT_CURVE_BATCH(EvalParametric108Inverse)
+    SELECT_CURVE_BATCH(EvalParametric109)
+    SELECT_CURVE_BATCH(EvalParametric109Inverse)
+    SELECT_CURVE_BATCH(EvalParametric5InverseValid)
+    SELECT_CURVE_BATCH(EvalParametric5InverseCached)
+#undef SELECT_CURVE_BATCH
+    return NULL;
+}
+
+static void EvaluateCurveBatchScalar(const cmsToneCurve* Curve, const cmsFloat32Number* In, cmsUInt32Number InStride,
+                                    cmsFloat32Number* Out, cmsUInt32Number OutStride, cmsUInt32Number Count)
+{
+    cmsUInt32Number i;
+    for (i = 0; i < Count; ++i)
+        Out[(size_t)i * OutStride] = cmsEvalToneCurveFloat(Curve, In[(size_t)i * InStride]);
+}
+
+static _cmsCurveEvalBatchFn GetCurveBatchEvaluator(const cmsToneCurve* Curve)
+{
+    cmsUInt32Number i;
+    if (Curve == NULL) return NULL;
+    if (Curve->nSegments == 0)
+        return _cmsIsStockInterpolation(Curve->InterpParams) ? EvaluateCurveBatchScalar : NULL;
+    for (i = 0; i < Curve->nSegments; ++i) {
+        if (Curve->Segments[i].Type == 0) {
+            if (!_cmsIsStockInterpolation(Curve->SegInterp[i])) return NULL;
+        }
+        else if (GetParametricBatchEvaluator(Curve->Evals[i]) == NULL) return NULL;
+    }
+    if (Curve->nSegments == 1 && Curve->Segments[0].Type != 0) {
+        cmsUInt32Number nParams = 0;
+        // Unused slots in a caller-supplied segment need not be initialized.
+        for (i = 0; i < DefaultCurves.nFunctions; ++i)
+            if (Curve->Segments[0].Type == DefaultCurves.FunctionTypes[i] ||
+                Curve->Segments[0].Type == -DefaultCurves.FunctionTypes[i]) {
+                nParams = DefaultCurves.ParameterCount[i];
+                break;
+            }
+        if (nParams == 0) return EvaluateCurveBatchScalar;
+        if (Curve->Evals[0] == EvalParametric5InverseCached) nParams = 9;
+        for (i = 0; i < nParams; ++i)
+            if (!isfinite(Curve->Segments[0].Params[i])) return EvaluateCurveBatchScalar;
+        return GetParametricBatchEvaluator(Curve->Evals[0]);
+    }
+    return EvaluateCurveBatchScalar;
+}
+
+cmsBool _cmsCanBatchCurve(const cmsToneCurve* Curve)
+{
+    return Curve != NULL && Curve->EvalBatch != NULL && Curve->EvalBatch == GetCurveBatchEvaluator(Curve);
+}

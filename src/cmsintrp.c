@@ -1328,3 +1328,14 @@ cmsInterpFunction DefaultInterpolatorsFactory(cmsUInt32Number nInputChannels, cm
 
     return Interpolation;
 }
+
+// A built-in outer stage may still contain a plugin interpolator.
+cmsBool _cmsIsStockInterpolation(const cmsInterpParams* p)
+{
+    cmsInterpFunction Stock;
+    if (p == NULL) return FALSE;
+    Stock = DefaultInterpolatorsFactory(p->nInputs, p->nOutputs, p->dwFlags);
+    if (p->dwFlags & CMS_LERP_FLAGS_FLOAT)
+        return p->Interpolation.LerpFloat == Stock.LerpFloat;
+    return p->Interpolation.Lerp16 == Stock.Lerp16;
+}

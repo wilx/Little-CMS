@@ -7,7 +7,7 @@ AUTOMAKE_OPTIONS = 1.7 foreign
 
 AM_CPPFLAGS    =  -I$(top_builddir)/include -I$(top_srcdir)/include -I$(top_srcdir)/src
 
-check_PROGRAMS = testcms testpow
+check_PROGRAMS = testcms testpow testbatch
 
 # CFLAGS = --pedantic -Wall -std=c99 -O2
 
@@ -21,6 +21,10 @@ testcms_SOURCES = testcms2.c testplugin.c zoo_icc.c testcms2.h
 testpow_SOURCES = testpow.c ../src/cmspow.c
 testpow_LDADD = $(LCMS_LIB_DEPLIBS)
 
+testbatch_SOURCES = testbatch.c
+testbatch_LDADD = $(top_builddir)/src/liblcms2.la $(LCMS_LIB_DEPLIBS)
+testbatch_LDFLAGS = -static @LDFLAGS@
+
 EXTRA_DIST = test1.icc bad.icc toosmall.icc test2.icc \
              test3.icc test4.icc \
              test5.icc ibm-t61.icc crayons.icc bad_mpe.icc 
@@ -31,6 +35,7 @@ check:
 	fi
 	LD_LIBRARY_PATH=$(top_builddir)/src/.libs ./testcms
 	./testpow
+	./testbatch
 	if [ $(top_srcdir) != $(top_builddir) ]; then \
 		rm -f $(top_builddir)/testbed/*.ic?; \
 	fi
