@@ -126,19 +126,6 @@ cmsFloat64Number f(cmsFloat64Number t)
         return _cmsPow(t, 1.0/3.0);
 }
 
-static
-cmsFloat64Number f_1(cmsFloat64Number t)
-{
-    const cmsFloat64Number Limit = (24.0/116.0);
-
-    if (t <= Limit) {
-        return (108.0/841.0) * (t - (16.0/116.0));
-    }
-
-    return t * t * t;
-}
-
-
 // Standard XYZ to Lab. it can handle negative XZY numbers in some cases
 void CMSEXPORT cmsXYZ2Lab(const cmsCIEXYZ* WhitePoint, cmsCIELab* Lab, const cmsCIEXYZ* xyz)
 {
@@ -157,22 +144,13 @@ void CMSEXPORT cmsXYZ2Lab(const cmsCIEXYZ* WhitePoint, cmsCIELab* Lab, const cms
 }
 
 
-// Standard XYZ to Lab. It can return negative XYZ in some cases
+// Standard Lab to XYZ. It can return negative XYZ in some cases
 void CMSEXPORT cmsLab2XYZ(const cmsCIEXYZ* WhitePoint, cmsCIEXYZ* xyz,  const cmsCIELab* Lab)
 {
-    cmsFloat64Number x, y, z;
-
     if (WhitePoint == NULL)
         WhitePoint = cmsD50_XYZ();
 
-    y = (Lab-> L + 16.0) / 116.0;
-    x = y + 0.002 * Lab -> a;
-    z = y - 0.005 * Lab -> b;
-
-    xyz -> X = f_1(x) * WhitePoint -> X;
-    xyz -> Y = f_1(y) * WhitePoint -> Y;
-    xyz -> Z = f_1(z) * WhitePoint -> Z;
-
+    _cmsLab2XYZWithWhitePoint(WhitePoint, xyz, Lab);
 }
 
 static
