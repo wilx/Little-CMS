@@ -3098,7 +3098,13 @@ cmsUInt8Number* PackFloatsFromFloat(_cmsTRANSFORM* info,
 
        if (Extra == 0 && SwapFirst) {
 
-              memmove(swap1 + 1, swap1, (nChan - 1)* sizeof(cmsFloat32Number));
+              // Rotate channels across planes, leaving neighboring pixels intact.
+              if (Planar) {
+                     for (i = nChan - 1; i > 0; --i)
+                            swap1[i * Stride] = swap1[(i - 1) * Stride];
+              }
+              else
+                     memmove(swap1 + 1, swap1, (nChan - 1)* sizeof(cmsFloat32Number));
               *swap1 = (cmsFloat32Number)v;
        }
 
@@ -4069,4 +4075,123 @@ cmsBool _cmsHasStockFloatFormatters(const _cmsTRANSFORM* p)
 {
     return p->FromInputFloat == _cmsGetStockInputFormatter(p->InputFormat, CMS_PACK_FLAGS_FLOAT).FmtFloat &&
            p->ToOutputFloat == _cmsGetStockOutputFormatter(p->OutputFormat, CMS_PACK_FLAGS_FLOAT).FmtFloat;
+}
+
+// Stock formats without a dedicated batch implementation retain their exact
+// scalar conversion. Plugin formatters never enter the batched transform.
+static cmsUInt8Number* UnrollFloatBatchScalar(_cmsTRANSFORM* p, cmsFloat32Number Values[],
+    cmsUInt8Number* Buffer, cmsUInt32Number PlaneStride, cmsUInt32Number Count, cmsUInt32Number ValueStride)
+{
+    cmsUInt32Number i;
+    for (i = 0; i < Count; ++i)
+        Buffer = p->FromInputFloat(p, Values + (size_t)i * ValueStride, Buffer, PlaneStride);
+    return Buffer;
+}
+
+static cmsUInt8Number* PackFloatBatchScalar(_cmsTRANSFORM* p, cmsFloat32Number Values[],
+    cmsUInt8Number* Buffer, cmsUInt32Number PlaneStride, cmsUInt32Number Count, cmsUInt32Number ValueStride)
+{
+    cmsUInt32Number i;
+    for (i = 0; i < Count; ++i)
+        Buffer = p->ToOutputFloat(p, Values + (size_t)i * ValueStride, Buffer, PlaneStride);
+    return Buffer;
+}
+
+// Keep the scalar operation order and precision, including the float addition
+// of 128 before division in double precision. Only layout decisions move out.
+#define DEFINE_LAB_FLOAT_BATCH(Name, Planar) \
+static cmsUInt8Number* Name(_cmsTRANSFORM* p, cmsFloat32Number Values[], \
+    cmsUInt8Number* Buffer, cmsUInt32Number PlaneStride, cmsUInt32Number Count, cmsUInt32Number ValueStride) \
+{ \
+    const cmsUInt32Number Advance = p->BatchInput.Advance; \
+    const size_t ChannelStride = (Planar) ? PlaneStride / sizeof(cmsFloat32Number) : 1; \
+    cmsFloat32Number* From = (cmsFloat32Number*)Buffer; \
+    cmsUInt32Number i; \
+    for (i = 0; i < Count; ++i) { \
+        Values[0] = (cmsFloat32Number)(From[0] / 100.0); \
+        Values[1] = (cmsFloat32Number)((From[ChannelStride] + 128) / 255.0); \
+        Values[2] = (cmsFloat32Number)((From[2 * ChannelStride] + 128) / 255.0); \
+        From += Advance; \
+        Values += ValueStride; \
+    } \
+    return (cmsUInt8Number*)From; \
+}
+DEFINE_LAB_FLOAT_BATCH(UnrollLabFloatBatch, FALSE)
+DEFINE_LAB_FLOAT_BATCH(UnrollLabFloatPlanarBatch, TRUE)
+#undef DEFINE_LAB_FLOAT_BATCH
+
+// Walk one channel across a block: channel mapping and plane offsets are loop
+// invariants. Maximum stays a runtime operand, as in the scalar formatter;
+// replacing unit scaling with a copy can change subnormal/exceptional results.
+#define DEFINE_FLOAT_BATCH(Name, Input, Planar, Reverse) \
+static cmsUInt8Number* Name(_cmsTRANSFORM* p, cmsFloat32Number Values[], \
+    cmsUInt8Number* Buffer, cmsUInt32Number PlaneStride, cmsUInt32Number Count, cmsUInt32Number ValueStride) \
+{ \
+    const _cmsFloatFormatterBatch* Layout = (Input) ? &p->BatchInput : &p->BatchOutput; \
+    const size_t ChannelStride = (Planar) ? PlaneStride / sizeof(cmsFloat32Number) : 1; \
+    const cmsUInt32Number Advance = Layout->Advance; \
+    cmsUInt32Number c, i; \
+    for (c = 0; c < Layout->Channels; ++c) { \
+        cmsFloat32Number* External = (cmsFloat32Number*)Buffer + (c + Layout->Start) * ChannelStride; \
+        cmsFloat32Number* Internal = Values + Layout->Map[c]; \
+        for (i = 0; i < Count; ++i) { \
+            if (Input) { \
+                cmsFloat32Number v = *External / (cmsFloat32Number)Layout->Maximum; \
+                *Internal = (Reverse) ? 1 - v : v; \
+            } else { \
+                cmsFloat64Number v = *Internal * Layout->Maximum; \
+                *External = (cmsFloat32Number)((Reverse) ? Layout->Maximum - v : v); \
+            } \
+            External += Advance; \
+            Internal += ValueStride; \
+        } \
+    } \
+    return Buffer + (size_t)Count * Advance * sizeof(cmsFloat32Number); \
+}
+DEFINE_FLOAT_BATCH(UnrollFloatBatch, TRUE, FALSE, FALSE)
+DEFINE_FLOAT_BATCH(UnrollFloatPlanarBatch, TRUE, TRUE, FALSE)
+DEFINE_FLOAT_BATCH(PackFloatBatch, FALSE, FALSE, FALSE)
+DEFINE_FLOAT_BATCH(PackFloatReverseBatch, FALSE, FALSE, TRUE)
+DEFINE_FLOAT_BATCH(PackFloatPlanarBatch, FALSE, TRUE, FALSE)
+DEFINE_FLOAT_BATCH(PackFloatPlanarReverseBatch, FALSE, TRUE, TRUE)
+#undef DEFINE_FLOAT_BATCH
+
+static void SetupFloatLayout(_cmsFloatFormatterBatch* Layout, cmsUInt32Number Format,
+                            cmsFormatterFloat Scalar, cmsBool Input)
+{
+    cmsUInt32Number i, Extra = T_EXTRA(Format), Swap = T_DOSWAP(Format);
+    cmsUInt32Number Rotate = Extra == 0 && T_SWAPFIRST(Format);
+    Layout->Format = Format;
+    Layout->Scalar = Scalar;
+    Layout->Channels = T_CHANNELS(Format);
+    Layout->Advance = T_PLANAR(Format) ? 1 : Layout->Channels + Extra;
+    Layout->Start = (Swap ^ T_SWAPFIRST(Format)) ? Extra : 0;
+    Layout->Maximum = IsInkSpace(Format) ? 100.0 : 1.0;
+    for (i = 0; i < Layout->Channels; ++i) {
+        cmsUInt32Number Index = i;
+        if (!Input && Rotate) Index = (Index + Layout->Channels - 1) % Layout->Channels;
+        if (Swap) Index = Layout->Channels - Index - 1;
+        if (Input && Rotate) Index = (Index + Layout->Channels - 1) % Layout->Channels;
+        Layout->Map[i] = Index;
+    }
+}
+
+void _cmsSetupFloatFormatterBatches(_cmsTRANSFORM* p)
+{
+    const cmsUInt32Number In = p->InputFormat, Out = p->OutputFormat;
+    SetupFloatLayout(&p->BatchInput, In, p->FromInputFloat, TRUE);
+    SetupFloatLayout(&p->BatchOutput, Out, p->ToOutputFloat, FALSE);
+    p->BatchInput.Fn = UnrollFloatBatchScalar;
+    p->BatchOutput.Fn = PackFloatBatchScalar;
+    if (p->FromInputFloat == UnrollLabFloatToFloat)
+        p->BatchInput.Fn = T_PLANAR(In) ? UnrollLabFloatPlanarBatch : UnrollLabFloatBatch;
+    else if (p->FromInputFloat == UnrollFloatsToFloat && !T_PREMUL(In))
+        p->BatchInput.Fn = T_PLANAR(In) ? UnrollFloatPlanarBatch : UnrollFloatBatch;
+
+    if (p->ToOutputFloat == PackFloatsFromFloat) {
+        if (T_PLANAR(Out))
+            p->BatchOutput.Fn = T_FLAVOR(Out) ? PackFloatPlanarReverseBatch : PackFloatPlanarBatch;
+        else
+            p->BatchOutput.Fn = T_FLAVOR(Out) ? PackFloatReverseBatch : PackFloatBatch;
+    }
 }

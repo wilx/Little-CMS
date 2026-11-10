@@ -257,7 +257,7 @@ static void FloatXFORMBatch(_cmsTRANSFORM* p, const void* in, void* out,
                            cmsUInt32Number PixelsPerLine, cmsUInt32Number LineCount, const cmsStride* Stride)
 {
     cmsFloat32Number Storage[2][CMS_BATCH_SIZE * MAX_STAGE_CHANNELS];
-    cmsUInt32Number Line, Pixel, Count, i;
+    cmsUInt32Number Line, Pixel, Count;
     _cmsHandleExtraChannels(p, in, out, PixelsPerLine, LineCount, Stride);
     for (Line = 0; Line < LineCount; ++Line) {
         cmsUInt8Number* From = (cmsUInt8Number*)in + (size_t)Line * Stride->BytesPerLineIn;
@@ -266,16 +266,14 @@ static void FloatXFORMBatch(_cmsTRANSFORM* p, const void* in, void* out,
             cmsFloat32Number* Result;
             Count = PixelsPerLine - Pixel;
             if (Count > CMS_BATCH_SIZE) Count = CMS_BATCH_SIZE;
-            for (i = 0; i < Count; ++i)
-                From = p->FromInputFloat(p, Storage[0] + i * MAX_STAGE_CHANNELS, From, Stride->BytesPerPlaneIn);
+            From = p->BatchInput.Fn(p, Storage[0], From, Stride->BytesPerPlaneIn, Count, MAX_STAGE_CHANNELS);
             Result = _cmsPipelineEvalBatch(p->Lut, Storage[0], Storage[1], MAX_STAGE_CHANNELS, Count);
-            for (i = 0; i < Count; ++i)
-                To = p->ToOutputFloat(p, Result + i * MAX_STAGE_CHANNELS, To, Stride->BytesPerPlaneOut);
+            To = p->BatchOutput.Fn(p, Result, To, Stride->BytesPerPlaneOut, Count, MAX_STAGE_CHANNELS);
         }
     }
 }
 
-// Float xform converts floats. Since there are no performance issues, one routine does all job, including gamut check.
+// Float transforms use prepared batches when possible, or the scalar path including gamut check.
 // Note that because extended range, we can use a -1.0 value for out of gamut in this case.
 static
 void FloatXFORM(_cmsTRANSFORM* p,
@@ -291,8 +289,11 @@ void FloatXFORM(_cmsTRANSFORM* p,
     cmsFloat32Number OutOfGamut;
     size_t i, j, c, strideIn, strideOut;
 
-    if (PixelsPerLine > 1 && p->GamutCheck == NULL &&
-        _cmsHasStockFloatFormatters(p) && _cmsCanBatchPipeline(p->Lut)) {
+    if (PixelsPerLine > 1 && p->BatchLut != NULL && p->GamutCheck == NULL &&
+        p->Lut == p->BatchLut && p->Lut->EvalFloatFn == p->BatchEvalFloat &&
+        p->Lut->Data == p->BatchData && p->Lut->Elements == p->BatchElements &&
+        p->InputFormat == p->BatchInput.Format && p->OutputFormat == p->BatchOutput.Format &&
+        p->FromInputFloat == p->BatchInput.Scalar && p->ToOutputFloat == p->BatchOutput.Scalar) {
         FloatXFORMBatch(p, in, out, PixelsPerLine, LineCount, Stride);
         return;
     }
@@ -1312,6 +1313,19 @@ cmsHTRANSFORM CMSEXPORT cmsCreateExtendedTransform(cmsContext ContextID,
             xform ->Lut ->Eval16Fn(xform ->Cache.CacheIn, xform->Cache.CacheOut, xform -> Lut->Data);
         }
 
+    }
+
+    // Plugins and pipeline optimization have finished. A transform's pipeline,
+    // including its nested callbacks/parameters, remains read-only after this
+    // point (also when shared by workers). Do not build a mutable lazy cache.
+    if ((xform->xform == FloatXFORM || xform->Worker == FloatXFORM) &&
+        xform->GamutCheck == NULL && _cmsHasStockFloatFormatters(xform) &&
+        _cmsCanBatchPipeline(xform->Lut)) {
+        _cmsSetupFloatFormatterBatches(xform);
+        xform->BatchLut = xform->Lut;
+        xform->BatchEvalFloat = xform->Lut->EvalFloatFn;
+        xform->BatchData = xform->Lut->Data;
+        xform->BatchElements = xform->Lut->Elements;
     }
 
     return (cmsHTRANSFORM) xform;

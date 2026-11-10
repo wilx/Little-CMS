@@ -1146,6 +1146,19 @@ typedef struct {
 
 
 // Transformation
+typedef cmsUInt8Number* (*_cmsFormatterFloatBatchFn)(struct _cmstransform_struct* Transform,
+    cmsFloat32Number Values[], cmsUInt8Number* Buffer, cmsUInt32Number PlaneStride,
+    cmsUInt32Number Count, cmsUInt32Number ValueStride);
+
+// Immutable layout selected from a stock float formatter at transform creation.
+typedef struct {
+    _cmsFormatterFloatBatchFn Fn;
+    cmsFormatterFloat Scalar;
+    cmsUInt32Number Format, Channels, Advance, Start;
+    cmsUInt32Number Map[cmsMAXCHANNELS];
+    cmsFloat64Number Maximum;
+} _cmsFloatFormatterBatch;
+
 typedef struct _cmstransform_struct {
 
     cmsUInt32Number InputFormat, OutputFormat; // Keep formats for further reference
@@ -1205,6 +1218,14 @@ typedef struct _cmstransform_struct {
     cmsInt32Number   MaxWorkers;
     cmsUInt32Number  WorkerFlags;
 
+    // The transform owns a read-only pipeline. These snapshots guard replacement
+    // of its top-level state, without rescanning every curve on every scanline.
+    cmsPipeline* BatchLut;
+    _cmsPipelineEvalFloatFn BatchEvalFloat;
+    const void* BatchData;
+    const cmsStage* BatchElements;
+    _cmsFloatFormatterBatch BatchInput, BatchOutput;
+
 } _cmsTRANSFORM;
 
 // Copies extra channels from input to output if the original flags in the transform structure
@@ -1258,6 +1279,7 @@ CMS_BATCH_PRIVATE cmsBool _cmsCanBatchPipeline(const cmsPipeline* Lut);
 CMS_BATCH_PRIVATE cmsFloat32Number* _cmsPipelineEvalBatch(const cmsPipeline* Lut,
     cmsFloat32Number* In, cmsFloat32Number* Scratch, cmsUInt32Number Stride, cmsUInt32Number Count);
 CMS_BATCH_PRIVATE cmsBool _cmsHasStockFloatFormatters(const _cmsTRANSFORM* p);
+CMS_BATCH_PRIVATE void _cmsSetupFloatFormatterBatches(_cmsTRANSFORM* p);
 #undef CMS_BATCH_PRIVATE
 
 #define _lcms_internal_H

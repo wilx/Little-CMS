@@ -1889,61 +1889,45 @@ cmsBool CMSEXPORT cmsPipelineEvalReverseFloat(cmsFloat32Number Target[],
 
 
 // Stock scalar formulas remain the single source of arithmetic for batch loops.
-// Inlining can change which NaN payload wins when several operands are NaNs.
-// Keep non-finite samples/coefficients on the original scalar callback.
-static cmsBool MatrixBatchFinite(const cmsStage* Stage)
-{
-    const _cmsStageMatrixData* Data = (const _cmsStageMatrixData*)Stage->Data;
-    cmsUInt32Number i;
-    for (i = 0; i < Stage->InputChannels * Stage->OutputChannels; ++i)
-        if (!isfinite(Data->Double[i])) return FALSE;
-    if (Data->Offset != NULL)
-        for (i = 0; i < Stage->OutputChannels; ++i)
-            if (!isfinite(Data->Offset[i])) return FALSE;
-    return TRUE;
-}
-
-#define DEFINE_STAGE_BATCH(Name, Matrix) \
+// Batch eligibility verifies the stock callback at transform construction.
+// Calling it indirectly for non-finite input would run the same evaluator.
+// Keep each formula's own guards, notably those protecting CLUT indexing.
+#define DEFINE_STAGE_BATCH(Name) \
 static void Name##Batch(const cmsFloat32Number* In, cmsUInt32Number InStride, \
     cmsFloat32Number* Out, cmsUInt32Number OutStride, cmsUInt32Number Count, const cmsStage* Stage) \
 { \
-    cmsUInt32Number i, c; \
-    cmsBool ParametersFinite = !(Matrix) || MatrixBatchFinite(Stage); \
+    cmsUInt32Number i; \
     for (i = 0; i < Count; ++i) { \
         const cmsFloat32Number* Pixel = In + (size_t)i * InStride; \
-        cmsBool Finite = ParametersFinite; \
-        for (c = 0; Finite && c < Stage->InputChannels; ++c) \
-            if (!isfinite(Pixel[c])) Finite = FALSE; \
-        if (Finite) Name(Pixel, Out + (size_t)i * OutStride, Stage); \
-        else Stage->EvalPtr(Pixel, Out + (size_t)i * OutStride, Stage); \
+        Name(Pixel, Out + (size_t)i * OutStride, Stage); \
     } \
 }
-DEFINE_STAGE_BATCH(EvaluateIdentity, FALSE)
-DEFINE_STAGE_BATCH(EvaluateLab2XYZ, FALSE)
-DEFINE_STAGE_BATCH(EvaluateXYZ2Lab, FALSE)
-DEFINE_STAGE_BATCH(Clipper, FALSE)
-DEFINE_STAGE_BATCH(EvaluateCLUTfloat, FALSE)
-DEFINE_STAGE_BATCH(EvaluateCLUTfloatIn16, FALSE)
-DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_1_1, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_1_3, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_1_4, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_3_1, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_3_3, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_3_4, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_4_1, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_4_3, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_4_4, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_1_1, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_1_3, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_1_4, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_3_1, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_3_3, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_3_4, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_4_1, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_4_3, TRUE)
-DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_4_4, TRUE)
+DEFINE_STAGE_BATCH(EvaluateIdentity)
+DEFINE_STAGE_BATCH(EvaluateLab2XYZ)
+DEFINE_STAGE_BATCH(EvaluateXYZ2Lab)
+DEFINE_STAGE_BATCH(Clipper)
+DEFINE_STAGE_BATCH(EvaluateCLUTfloat)
+DEFINE_STAGE_BATCH(EvaluateCLUTfloatIn16)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_1_1)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_1_3)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_1_4)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_3_1)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_3_3)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_3_4)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_4_1)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_4_3)
+DEFINE_STAGE_BATCH(EvaluateMatrixWithOffset_4_4)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_1_1)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_1_3)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_1_4)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_3_1)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_3_3)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_3_4)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_4_1)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_4_3)
+DEFINE_STAGE_BATCH(EvaluateMatrixNoOffset_4_4)
 #undef DEFINE_STAGE_BATCH
 
 static void EvaluateCurvesBatch(const cmsFloat32Number* In, cmsUInt32Number InStride,
@@ -1989,8 +1973,8 @@ static _cmsStageEvalBatchFn GetStageBatchEvaluator(_cmsStageEvalFn Scalar)
     return NULL;
 }
 
-// Check once per transform call, before reordering formatter or stage callbacks.
-// Duplication can reselect nested curve/interpolation plugins, so inspect current data.
+// Check the final pipeline at transform construction, before reordering callbacks.
+// Duplication can reselect nested plugins, so inspect the completed pipeline's data.
 cmsBool _cmsCanBatchPipeline(const cmsPipeline* Lut)
 {
     const cmsStage* Stage;
