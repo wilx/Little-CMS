@@ -25,19 +25,9 @@
 #include "fastpow/exp_data.h"
 #include "fastpow/log_data.h"
 
-/* Keep contraction local to this kernel, even when LCMS is compiled with
-   -ffp-contract=off. The remaining library does not require AVX2 or FMA. */
-#if defined(__clang__)
-// Restrict AVX2/FMA instructions and any contraction options to the private pow kernel.
+/* Restrict AVX2/FMA instructions to the private pow kernel. Floating-point
+   contraction follows the compiler and build settings. */
 #define CMS_POW_TARGET __attribute__((target("avx2,fma")))
-// Allow FMA contraction within the Clang function body.
-#define CMS_POW_CONTRACT _Pragma("clang fp contract(fast)")
-#else
-// Restrict AVX2/FMA instructions and any contraction options to the private pow kernel.
-#define CMS_POW_TARGET __attribute__((target("avx2,fma"), optimize("fp-contract=fast")))
-// No body pragma is needed; CMS_POW_TARGET sets the GCC contraction option.
-#define CMS_POW_CONTRACT
-#endif
 
 /*
  * Double-precision pow helper functions.
@@ -72,7 +62,6 @@ top12 (double x)
 CMS_POW_TARGET static inline double
 log_inline (uint64_t ix, double *tail)
 {
-  CMS_POW_CONTRACT
   double z, r, y, invc, logc, logctail, kd, hi, t1, t2, lo, lo1, lo2, p;
   uint64_t iz, tmp;
   int k, i;
@@ -170,7 +159,6 @@ log_inline (uint64_t ix, double *tail)
 CMS_POW_TARGET static inline double
 exp_normal(double x, double xtail)
 {
-  CMS_POW_CONTRACT
   uint64_t ki, idx, top, sbits;
   double kd, z, r, r2, scale, tail, tmp;
   /* exp(x) = 2^(k/N) * exp(r), with exp(r) in [2^(-1/2N),2^(1/2N)].  */
@@ -220,7 +208,6 @@ exp_normal(double x, double xtail)
 CMS_POW_TARGET __attribute__((always_inline)) static inline double
 PowFMA(double x, double y)
 {
-  CMS_POW_CONTRACT
   uint64_t ix = asuint64(x), iy = asuint64(y);
   uint32_t topx = ix >> 52, topy = iy >> 52;
   if (topx - 0x001 >= 0x7ff - 0x001 ||
@@ -270,7 +257,6 @@ double _cmsPowCore(double x, double y) __attribute__((ifunc("ResolvePow")));
 // returning so the curve callback can tail-call this helper.
 CMS_POW_TARGET static double PowAffineFMA(double x, double y, double subtract, double divisor)
 {
-    CMS_POW_CONTRACT
     return (PowFMA(x, y) - subtract) / divisor;
 }
 

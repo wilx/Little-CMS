@@ -21,12 +21,13 @@ exponents, and results near overflow/underflow use system pow.
 
 On glibc x86-64 with GCC >= 5 or Clang >= 7, a GNU IFUNC resolver chooses the
 AVX2/FMA implementation once when the symbol is resolved. CPUs without both
-features use system pow. Contraction is enabled only inside the Arm kernel.
+features use system pow. Contraction follows the compiler and build settings;
+the upstream explicit fma() calls remain fused independently of contraction.
 Other platforms, fast-math builds, and builds defining CMS_DONT_USE_FAST_POW
 use system pow. No public API, exported symbol, or structure layout is added.
 The inline front end preserves compiler folding of constant powers and
 constant-exponent squares, avoiding unnecessary kernel calls for these.
 
 This is a scalar double-precision implementation, not a vector approximation.
-It matched the installed glibc pow bit for bit in the recorded investigation;
-universal bit identity with every platform/libm version is not promised.
+Results can differ in the last bits from system pow; universal bit identity
+with every compiler setting or platform/libm version is not promised.
